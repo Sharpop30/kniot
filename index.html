@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#16a34a">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <title>הקניות שלנו 🛒</title>
 <style>
 :root{
@@ -242,7 +245,7 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:.82rem;dir
 /* ================= state ================= */
 const DATA_FILE = 'kniot-data.json';
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', rcpts:'kniot_receipts', pend:'kniot_pending'};
-let state = {items:[], purchases:[], catalog:{}, stores:[], v:1};
+let state = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, v:1};
 let receiptCache = {};   // purchaseId -> dataURL (local, pruned)
 let pendingReceipts = {};// purchaseId -> dataURL waiting to be pushed
 let token = localStorage.getItem(LS.token) || '';
@@ -254,6 +257,7 @@ const $ = id => document.getElementById(id);
 
 function loadLocal(){
   try{ const s = JSON.parse(localStorage.getItem(LS.state)); if(s && s.items) state = s; }catch(e){}
+  if(!state.aliases) state.aliases = {};
   try{ receiptCache = JSON.parse(localStorage.getItem(LS.rcpts)) || {}; }catch(e){}
   try{ pendingReceipts = JSON.parse(localStorage.getItem(LS.pend)) || {}; }catch(e){}
 }
@@ -291,7 +295,14 @@ function mergeStates(a, b){
       out.catalog[n] = ex ? {count:Math.max(ex.count,c.count), last:Math.max(ex.last,c.last)} : {...c};
     }
   out.stores = [...new Set([...(a.stores||[]), ...(b.stores||[])])];
+  out.aliases = {...(a.aliases||{}), ...(b.aliases||{})};
   return out;
+}
+function canon(n){
+  let s = n, guard = 0;
+  const al = state.aliases || {};
+  while(al[s] && guard++ < 10) s = al[s];
+  return s;
 }
 
 /* ================= list actions ================= */
@@ -300,7 +311,7 @@ function bumpCatalog(name){
   c.count++; c.last = now(); state.catalog[name] = c;
 }
 function addItem(name){
-  name = (name||'').trim();
+  name = canon((name||'').trim());
   if(!name) return;
   const ex = state.items.find(i => !i.deleted && i.name === name);
   if(ex){
@@ -336,7 +347,7 @@ function priceHistory(name){
   for(const p of state.purchases){
     if(p.deleted || !p.items) continue;
     for(const it of p.items){
-      if(it.n!==name || !(it.p>0)) continue;
+      if(canon(it.n)!==canon(name) || !(it.p>0)) continue;
       const nu = normUnit(it.amt, it.u, it.p);
       if(nu) out.push({date:p.date, store:p.store, amt:it.amt, unit:it.u, price:it.p, ...nu});
     }
@@ -346,7 +357,7 @@ function priceHistory(name){
 function lastEntry(name){ const h=priceHistory(name); return h[h.length-1]||null; }
 function productsWithPrices(){
   const s=new Set();
-  for(const p of state.purchases) if(!p.deleted&&p.items) for(const it of p.items) if(it.p>0) s.add(it.n);
+  for(const p of state.purchases) if(!p.deleted&&p.items) for(const it of p.items) if(it.p>0) s.add(canon(it.n));
   return [...s].sort((a,b)=>a.localeCompare(b,'he'));
 }
 function priceHint(i){
@@ -614,6 +625,7 @@ function restoreList(pid){
   toast('הרשימה שוחזרה');
 }
 function addItemSilent(name, qty){
+  name = canon(name);
   const ex = state.items.find(i=>!i.deleted && i.name===name);
   if(ex){ ex.done=false; ex.qty=Math.max(ex.qty||1, qty); ex.updatedAt=now(); }
   else state.items.push({id:uid(), name, qty, done:false, updatedAt:now()});
@@ -737,7 +749,51 @@ function prodDetailHtml(name){
         <div class="muted">${fmtIls(x.price)}${x.amt?` ל-${x.amt} ${esc(x.unit)}`:''}</div></div>
       <div style="white-space:nowrap"><b>${fmtIls(x.up)}</b> <span class="muted">${x.label}</span>${x===best?' 🏆':''}</div>
     </div>`).join('')}
+    ${mergeSectionHtml(name)}
   </div>`;
+}
+function mergeSectionHtml(name){
+  const aliasChips = Object.entries(state.aliases||{})
+    .filter(([s,t]) => canon(t)===canon(name) && s!==name)
+    .map(([s]) => `<button class="chip" data-n="${esc(s)}" onclick="removeAlias(this.dataset.n)" title="ביטול מיזוג">${esc(s)} ✕</button>`).join('');
+  const cands = [...new Set([...productsWithPrices(), ...Object.keys(state.catalog)])]
+    .filter(c => canon(c)!==canon(name))
+    .sort((a,b)=>a.localeCompare(b,'he'));
+  return `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+    <div class="muted" style="margin-bottom:6px">🔗 אותו מוצר בשם אחר? מזגו כדי לאחד היסטוריות מחיר:</div>
+    ${aliasChips ? `<div class="muted" style="margin-bottom:4px">שמות ממוזגים (הקישו לביטול):</div><div class="chips" style="margin-bottom:8px">${aliasChips}</div>` : ''}
+    ${cands.length ? `<div class="row">
+      <select id="mergeSel"><option value="">בחרו מוצר למיזוג...</option>${cands.map(c=>`<option>${esc(c)}</option>`).join('')}</select>
+      <button class="ghost" data-n="${esc(name)}" onclick="mergeProd(this.dataset.n)" style="white-space:nowrap">מיזוג</button>
+    </div>` : '<div class="muted">אין מוצרים נוספים למיזוג.</div>'}
+  </div>`;
+}
+function mergeProd(target){
+  const sel = $('mergeSel'); const src = sel && sel.value;
+  if(!src) { toast('בחרו מוצר למיזוג'); return; }
+  if(!confirm(`למזג את "${src}" לתוך "${target}"? כל ההיסטוריה של "${src}" תוצג תחת "${target}".`)) return;
+  state.aliases[src] = target;
+  const c1 = state.catalog[src];
+  if(c1){
+    const c2 = state.catalog[target] || {count:0, last:0};
+    state.catalog[target] = {count:c1.count+c2.count, last:Math.max(c1.last, c2.last)};
+    delete state.catalog[src];
+  }
+  const tgtIt = state.items.find(i=>!i.deleted && i.name===target);
+  for(const it of state.items){
+    if(!it.deleted && it.name===src){
+      if(tgtIt && tgtIt!==it){
+        tgtIt.qty = (tgtIt.qty||1)+(it.qty||1); tgtIt.updatedAt = now();
+        it.deleted = true; it.updatedAt = now();
+      } else { it.name = target; it.updatedAt = now(); }
+    }
+  }
+  afterChange(); selectProd(target); toast('המוצרים מוזגו 🔗');
+}
+function removeAlias(src){
+  if(!confirm(`לבטל את המיזוג של "${src}"? ההיסטוריה שלו תוצג שוב בנפרד.`)) return;
+  delete state.aliases[src];
+  afterChange(); renderProdSection();
 }
 function selectProd(n){ $('prodSearch').value = n; renderProdSection(); }
 function clearProd(){ $('prodSearch').value = ''; renderProdSection(); }
@@ -925,6 +981,8 @@ window.addEventListener('online', ()=>{ if(token) doSync(); });
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && token) doSync(); });
 loadLocal(); render();
 if(token){ setSync('','מתחבר...'); doSync(); } else setSync('','לא מחובר');
+if('serviceWorker' in navigator && location.protocol === 'https:')
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
 </body>
 </html>
