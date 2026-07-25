@@ -73,7 +73,12 @@ nav button.on{color:var(--green);font-weight:700}
 /* item pricing rows */
 .prow{display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;border-bottom:1px dashed var(--border);padding-bottom:10px}
 .prow:last-child{border-bottom:none}
-.prow .pname{flex:1 1 100%;font-size:.92rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.prow.needmap{background:#fffbeb;border-radius:8px;padding:8px;border-bottom-color:#fde68a}
+.prow .srcline{flex:1 1 100%;font-size:.78rem;color:var(--muted);direction:rtl;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--bg);padding:3px 7px;border-radius:6px}
+.prow .pname{flex:1 1 100%;font-size:.92rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.prow .pnameInput{flex:1;font-weight:600;padding:8px 10px}
+.prow .phint{flex:1 1 100%}
 .prow input,.prow select{padding:9px 8px;font-size:.9rem;width:auto}
 .prow .pprice{flex:1.2}
 .prow .pamt{flex:1}
@@ -177,8 +182,37 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:.82rem;dir
     </div>
   </div>
   <div class="card">
+    <h3 style="margin:0 0 10px">🎯 זיהוי חשבוניות מדויק</h3>
+    <div id="setNoKey">
+      <p class="muted" style="margin-top:0">הזיהוי החינמי מתקשה בחשבוניות תרמיות. חיבור מפתח Claude API משפר משמעותית ועולה אגורות בודדות לחשבונית.</p>
+      <div class="warn">⚠️ לפני שמתחילים: טענו קרדיט קטן (למשל $5) ו<b>ודאו ש-auto-reload כבוי</b>. כך אי אפשר לחרוג — כשהקרדיט נגמר הבקשות פשוט נעצרות.</div>
+      <div class="field"><input id="keyInput" placeholder="sk-ant-..." style="direction:ltr" autocomplete="off"></div>
+      <button class="primary" style="width:100%" onclick="saveKey()">שמירת מפתח</button>
+      <p class="muted" style="margin-bottom:0">המפתח נשמר רק במכשיר הזה ואינו מסונכרן לענן. יש להזין אותו בנפרד בכל טלפון.</p>
+    </div>
+    <div id="setKey" style="display:none">
+      <p style="margin:0 0 6px">✅ מחובר</p>
+      <div class="muted" id="usageInfo"></div>
+      <div class="progress"><div id="usageBar" style="width:0%"></div></div>
+      <div class="field" style="margin-top:12px">
+        <label>תקרה חודשית בדולרים. מעליה — נפילה אוטומטית לזיהוי החינמי.</label>
+        <div class="row">
+          <input id="capInput" type="number" min="0.5" step="0.5" style="direction:ltr;text-align:right">
+          <button class="ghost" onclick="saveCap()">שמירה</button>
+        </div>
+        <div class="muted" style="margin-top:4px">להשוואה: חשבונית עולה כ-$0.004 (כאגורה וחצי), כך ש-$5 מספיקים לכ-1,200 חשבוניות.</div>
+      </div>
+      <button class="danger" onclick="clearKey()">הסרת המפתח מהמכשיר</button>
+    </div>
+  </div>
+  <div class="card">
     <h3 style="margin:0 0 10px">📱 טיפ</h3>
     <p class="muted" style="margin:0">הוסיפו לדף הבית: בדפדפן — שיתוף ← "הוספה למסך הבית". האפליקציה תיפתח כמו אפליקציה רגילה.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 10px">🧪 הדגמה</h3>
+    <p class="muted" style="margin-top:0">רוצים לראות איך נראה חילוץ חשבונית לפני שמצלמים משהו אמיתי? ההדגמה מריצה את המסך האמיתי עם נתוני חשבונית לדוגמה — בלי מפתח API ובלי לשמור כלום.</p>
+    <button class="ghost" style="width:100%" onclick="runDemo()">▶️ הרצת הדגמה</button>
   </div>
   <div class="card">
     <h3 style="margin:0 0 10px">🗂 גיבוי</h3>
@@ -205,18 +239,21 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:.82rem;dir
   <div class="sheet">
     <h3>סיום קנייה 🧾</h3>
     <div class="field"><label>חנות</label>
-      <input id="fStore" list="storesDl" placeholder="שם החנות" autocomplete="off"><datalist id="storesDl"></datalist>
+      <input id="fStore" list="storesDl" placeholder="שם החנות" autocomplete="off" oninput="storePrefilled=false"><datalist id="storesDl"></datalist>
     </div>
     <div class="field"><label>סה"כ שולם (₪)</label>
       <input id="fTotal" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" style="direction:ltr;text-align:right">
     </div>
     <div class="field" id="fItemsField" style="display:none">
-      <label>מחיר לפריט (לא חובה — מאפשר השוואת מחירים פר מוצר)</label>
+      <label>פריטים ומחירים</label>
+      <div class="muted" id="mapCount" style="margin-bottom:8px"></div>
       <div id="fItems"></div>
+      <datalist id="prodNamesDl"></datalist>
     </div>
     <div class="field"><label>חשבונית (לא חובה)</label>
       <button class="photo-btn" onclick="rcptFile.click()">📷 <span id="rcptLbl">צילום / העלאת חשבונית (תמונה או PDF)</span></button>
-      <input type="file" id="rcptFile" accept="image/*,application/pdf" style="display:none" onchange="onReceiptPick(this)">
+      <input type="file" id="rcptFile" accept="image/*,.heic,.heif,application/pdf" multiple style="display:none" onchange="onReceiptPick(this)">
+      <div class="muted" id="pagesInfo" style="display:none;margin-top:6px"></div>
       <img id="rcptPrev" style="display:none">
       <button class="ghost" id="ocrBtn" style="display:none;width:100%;margin-top:8px" onclick="extractReceipt()">🪄 חילוץ מחירים אוטומטי מהחשבונית</button>
       <div class="muted" id="ocrStatus" style="display:none;margin-top:6px"></div>
@@ -244,8 +281,9 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:.82rem;dir
 'use strict';
 /* ================= state ================= */
 const DATA_FILE = 'kniot-data.json';
-const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', rcpts:'kniot_receipts', pend:'kniot_pending'};
-let state = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, v:1};
+const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', rcpts:'kniot_receipts', pend:'kniot_pending',
+            apikey:'kniot_apikey', usage:'kniot_usage', capUsd:'kniot_cap_usd'};
+let state = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, lineMap:{}, v:1};
 let receiptCache = {};   // purchaseId -> dataURL (local, pruned)
 let pendingReceipts = {};// purchaseId -> dataURL waiting to be pushed
 let token = localStorage.getItem(LS.token) || '';
@@ -258,6 +296,7 @@ const $ = id => document.getElementById(id);
 function loadLocal(){
   try{ const s = JSON.parse(localStorage.getItem(LS.state)); if(s && s.items) state = s; }catch(e){}
   if(!state.aliases) state.aliases = {};
+  if(!state.lineMap) state.lineMap = {};
   try{ receiptCache = JSON.parse(localStorage.getItem(LS.rcpts)) || {}; }catch(e){}
   try{ pendingReceipts = JSON.parse(localStorage.getItem(LS.pend)) || {}; }catch(e){}
 }
@@ -296,6 +335,7 @@ function mergeStates(a, b){
     }
   out.stores = [...new Set([...(a.stores||[]), ...(b.stores||[])])];
   out.aliases = {...(a.aliases||{}), ...(b.aliases||{})};
+  out.lineMap = {...(a.lineMap||{}), ...(b.lineMap||{})};
   return out;
 }
 function canon(n){
@@ -360,64 +400,150 @@ function productsWithPrices(){
   for(const p of state.purchases) if(!p.deleted&&p.items) for(const it of p.items) if(it.p>0) s.add(canon(it.n));
   return [...s].sort((a,b)=>a.localeCompare(b,'he'));
 }
-function priceHint(i){
-  const el = $('ph_'+i); if(!el) return;
-  const name = finishRows[i].name;
-  const cur = normUnit($('pa_'+i).value, $('pu_'+i).value, $('pp_'+i).value);
+/* ================= finish purchase ================= */
+let pickedReceipt = null, finishRows = [], storePrefilled = false;
+function rowById(rid){ return finishRows.find(r=>r.rid===rid); }
+function syncRowFromDom(rid){
+  const r = rowById(rid); if(!r) return;
+  const n = $('pn_'+rid), p = $('pp_'+rid), a = $('pa_'+rid), u = $('pu_'+rid);
+  if(n) r.name = n.value.trim();
+  if(p) r.p = p.value;
+  if(a) r.amt = a.value;
+  if(u) r.u = u.value;
+}
+function priceHint(rid){
+  syncRowFromDom(rid);
+  const el = $('ph_'+rid); if(!el) return;
+  const r = rowById(rid);
+  const cur = normUnit(r.amt, r.u, r.p);
+  if(!r.name){ el.textContent = '⚠️ בחרו שם מוצר כדי לעקוב אחרי המחיר'; el.className='phint up'; return; }
   if(!cur){ el.textContent=''; el.className='phint'; return; }
-  const hist = priceHistory(name).filter(h=>h.cls===cur.cls);
+  const hist = priceHistory(r.name).filter(h=>h.cls===cur.cls);
   const prev = hist[hist.length-1];
   if(!prev){ el.textContent = `${fmtIls(cur.up)} ${cur.label} — מחיר ראשון למוצר`; el.className='phint'; return; }
   const diff = cur.up - prev.up, pct = Math.abs(100*diff/prev.up).toFixed(0);
   if(Math.abs(diff) < 0.005){ el.textContent = `כמו בקנייה הקודמת (${fmtIls(prev.up)} ${prev.label})`; el.className='phint'; }
-  else if(diff < 0){ el.textContent = `↓ זול ב-${pct}% מהקנייה הקודמת (${fmtIls(prev.up)} ${prev.label}, ${esc(prev.store)})`; el.className='phint down'; }
-  else { el.textContent = `↑ יקר ב-${pct}% מהקנייה הקודמת (${fmtIls(prev.up)} ${prev.label}, ${esc(prev.store)})`; el.className='phint up'; }
+  else if(diff < 0){ el.textContent = `↓ זול ב-${pct}% (${fmtIls(prev.up)} ${prev.label}, ${esc(prev.store)})`; el.className='phint down'; }
+  else { el.textContent = `↑ יקר ב-${pct}% (${fmtIls(prev.up)} ${prev.label}, ${esc(prev.store)})`; el.className='phint up'; }
 }
+function makeRow(o){
+  return {rid: uid(), name:o.name||'', qty:o.qty||1, p:o.p??'', amt:o.amt??'', u:o.u||UNITS[0],
+          src:o.src||null, conf:o.conf||'none'};
+}
+function renderFinishRows(){
+  const w = $('fItems');
+  $('fItemsField').style.display = finishRows.length ? 'block' : 'none';
+  const known = [...new Set([...productsWithPrices(), ...Object.keys(state.catalog).map(canon)])].sort((a,b)=>a.localeCompare(b,'he'));
+  $('prodNamesDl').innerHTML = known.map(n=>`<option value="${esc(n)}">`).join('');
+  w.innerHTML = finishRows.map(r=>{
+    const unitOpts = UNITS.map(u=>`<option${u===r.u?' selected':''}>${u}</option>`).join('');
+    const needsMap = r.src && (!r.name || r.conf==='low');
+    return `<div class="prow${needsMap?' needmap':''}" id="row_${r.rid}">
+      ${r.src?`<div class="srcline">📄 ${esc(r.src)}</div>`:''}
+      <div class="pname">
+        <input class="pnameInput" id="pn_${r.rid}" list="prodNamesDl" value="${esc(r.name)}"
+               placeholder="${r.src?'שם המוצר אצלכם...':''}" oninput="priceHint('${r.rid}')">
+        <button class="x" onclick="dropRow('${r.rid}')" title="הסרה">✕</button>
+      </div>
+      <span class="phint" id="ph_${r.rid}"></span>
+      <input class="pprice" id="pp_${r.rid}" type="number" inputmode="decimal" step="0.01" min="0"
+             placeholder="מחיר ₪" value="${r.p}" oninput="priceHint('${r.rid}')">
+      <input class="pamt" id="pa_${r.rid}" type="number" inputmode="decimal" step="any" min="0"
+             placeholder="כמות" value="${r.amt}" oninput="priceHint('${r.rid}')">
+      <select class="punit" id="pu_${r.rid}" onchange="priceHint('${r.rid}')">${unitOpts}</select>
+    </div>`;
+  }).join('') + `<button class="ghost" style="width:100%;margin-top:6px" onclick="addBlankRow()">+ הוספת שורה ידנית</button>`;
+  finishRows.forEach(r=>priceHint(r.rid));
+  updateMapCount();
+}
+function updateMapCount(){
+  const el = $('mapCount'); if(!el) return;
+  const need = finishRows.filter(r=>r.src && (!r.name || r.conf==='low')).length;
+  el.innerHTML = need
+    ? `<b style="color:var(--amber)">❓ ${need} שורות ממתינות לאישור שם — אשרו והמערכת תזכור לתמיד</b>`
+    : (finishRows.some(r=>r.src) ? '✅ כל השורות מזוהות' : '');
+}
+function dropRow(rid){ finishRows = finishRows.filter(r=>r.rid!==rid); renderFinishRows(); }
+function addBlankRow(){ finishRows.forEach(r=>syncRowFromDom(r.rid)); finishRows.push(makeRow({})); renderFinishRows(); }
 
-/* ================= finish purchase ================= */
-let pickedReceipt = null, finishRows = [];
 function openFinish(){
   const done = activeItems().filter(i=>i.done);
   if(done.length===0 && !confirm('לא סומנו פריטים כנאספו. לשמור קנייה בכל זאת?')) return;
-  pickedReceipt = null; pickedReceiptFull = null;
-  $('rcptPrev').style.display='none'; $('rcptLbl').textContent='צילום / העלאת חשבונית (תמונה או PDF)';
-  $('ocrBtn').style.display='none'; $('ocrStatus').style.display='none'; $('ocrStatus').textContent='';
+  clearPages();
+  $('ocrStatus').style.display='none'; $('ocrStatus').textContent='';
   $('fStore').value = state.purchases.length ? (latestPurchase()?.store||'') : '';
+  storePrefilled = !!$('fStore').value;   // ערך ברירת מחדל — החשבונית רשאית לדרוס אותו
   $('fTotal').value = '';
-  $('fInfo').textContent = done.length ? `${done.length} פריטים שסומנו יישמרו בקנייה ויוסרו מהרשימה. פריטים שלא נאספו יישארו.` : '';
+  $('fInfo').innerHTML = done.length
+    ? `${done.length} פריטים סומנו. <b>צרפו חשבונית והמחירים ימולאו לבד</b> — או הזינו ידנית.`
+    : 'צרפו חשבונית כדי לחלץ את הפריטים אוטומטית.';
   $('storesDl').innerHTML = state.stores.map(s=>`<option value="${esc(s)}">`).join('');
-  finishRows = done;
-  $('fItemsField').style.display = done.length ? 'block' : 'none';
-  $('fItems').innerHTML = done.map((it,i)=>{
+  finishRows = done.map(it=>{
     const last = lastEntry(it.name);
-    const selUnit = last ? last.unit : UNITS[0];
-    const unitOpts = UNITS.map(u=>`<option${u===selUnit?' selected':''}>${u}</option>`).join('');
-    return `<div class="prow">
-      <div class="pname"><span>${esc(it.name)}${(it.qty||1)>1?` ×${it.qty}`:''}</span><span class="phint" id="ph_${i}"></span></div>
-      <input class="pprice" id="pp_${i}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="מחיר ₪" oninput="priceHint(${i})">
-      <input class="pamt" id="pa_${i}" type="number" inputmode="decimal" step="any" min="0" placeholder="כמות" value="${last&&last.amt?last.amt:''}" oninput="priceHint(${i})">
-      <select class="punit" id="pu_${i}" onchange="priceHint(${i})">${unitOpts}</select>
-    </div>`;
-  }).join('');
+    return makeRow({name:it.name, qty:it.qty||1, amt:last&&last.amt?last.amt:'', u:last?last.unit:UNITS[0]});
+  });
+  renderFinishRows();
   $('finishOverlay').classList.add('show');
 }
 function latestPurchase(){ return state.purchases.filter(p=>!p.deleted).sort((a,b)=>b.date-a.date)[0]; }
 function closeFinish(){ $('finishOverlay').classList.remove('show'); }
-let pickedReceiptFull = null; // hi-res for OCR
+let pickedPages = [];   // חשבונית ארוכה = כמה תמונות, לפי הסדר
 async function onReceiptPick(inp){
-  const f = inp.files[0]; if(!f) return;
+  const files = [...inp.files]; if(!files.length) return;
   $('rcptLbl').textContent = 'מעבד...';
   try{
-    if(f.type === 'application/pdf') pickedReceiptFull = await pdfToImage(f);
-    else pickedReceiptFull = await resizeDataUrl(URL.createObjectURL(f), 2000, 0.85);
-    pickedReceipt = await resizeDataUrl(pickedReceiptFull, 1000, 0.55);
+    const pages = [];
+    for(const f of files){
+      if(f.type === 'application/pdf') pages.push(...await pdfToPages(f));
+      else pages.push(await imageFileToDataUrl(f));
+    }
+    // הוספה לקיים, כדי שאפשר יהיה לצלם חלק ולהוסיף עוד אחר כך
+    pickedPages = pickedPages.concat(pages);
+    const stitched = await stitchImages(pickedPages);
+    pickedReceipt = await resizeDataUrl(stitched, 1200, 0.55);
     $('rcptPrev').src = pickedReceipt; $('rcptPrev').style.display='block';
-    $('rcptLbl').textContent = 'החלפת חשבונית';
+    $('rcptLbl').textContent = pickedPages.length>1 ? `${pickedPages.length} תמונות — הוספת עוד` : 'החלפה / הוספת המשך';
+    $('pagesInfo').style.display = pickedPages.length>1 ? 'block' : 'none';
+    $('pagesInfo').innerHTML = `📎 ${pickedPages.length} חלקים. צלמו עם חפיפה קלה — המערכת תזהה ותסיר שורות כפולות. <button class="danger" style="padding:2px 6px" onclick="clearPages()">איפוס</button>`;
     $('ocrBtn').style.display = 'block';
   }catch(e){ console.error(e); toast('שגיאה בעיבוד הקובץ'); $('rcptLbl').textContent='צילום / העלאת חשבונית (תמונה או PDF)'; }
   inp.value='';
 }
-function loadImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=src; }); }
+function clearPages(){
+  pickedPages = []; pickedReceipt = null;
+  $('rcptPrev').style.display='none'; $('pagesInfo').style.display='none';
+  $('ocrBtn').style.display='none';
+  $('rcptLbl').textContent='צילום / העלאת חשבונית (תמונה או PDF)';
+}
+async function stitchImages(urls){
+  if(urls.length === 1) return urls[0];
+  const imgs = [];
+  for(const u of urls) imgs.push(await loadImg(u));
+  const W = Math.max(...imgs.map(i=>i.width));
+  const H = imgs.reduce((s,i)=> s + Math.round(i.height * W/i.width), 0);
+  const c = document.createElement('canvas'); c.width=W; c.height=H;
+  const ctx = c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  let y=0;
+  for(const i of imgs){ const h = Math.round(i.height * W/i.width); ctx.drawImage(i,0,y,W,h); y+=h; }
+  return c.toDataURL('image/jpeg', 0.85);
+}
+function loadImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('decode')); im.src=src; }); }
+/* תמונות מאייפון הן HEIC — חלק מהדפדפנים לא מפענחים אותן. ננסה נטיבית, ואם נכשל נמיר. */
+function isHeic(f){ return /hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name||''); }
+async function imageFileToDataUrl(f){
+  const url = URL.createObjectURL(f);
+  try{
+    return await resizeDataUrl(url, 2000, 0.85);
+  }catch(e){
+    URL.revokeObjectURL(url);
+    if(!isHeic(f)) throw e;
+    $('rcptLbl').textContent = 'ממיר תמונת אייפון (HEIC)...';
+    if(!window.heic2any) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js');
+    const blob = await heic2any({blob:f, toType:'image/jpeg', quality:0.9});
+    const u2 = URL.createObjectURL(Array.isArray(blob)?blob[0]:blob);
+    return await resizeDataUrl(u2, 2000, 0.85);
+  }
+}
 async function resizeDataUrl(src, max, q){
   const img = await loadImg(src);
   const sc = Math.min(1, max/Math.max(img.width,img.height));
@@ -439,22 +565,60 @@ async function ensurePdf(){
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
 }
-async function pdfToImage(file){
+async function pdfToPages(file){
   await ensurePdf();
   const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
-  const n = Math.min(pdf.numPages, 2), canvases = [];
+  const n = Math.min(pdf.numPages, 6), out = [];
   for(let i=1;i<=n;i++){
     const page = await pdf.getPage(i);
     const vp = page.getViewport({scale:2});
     const c = document.createElement('canvas'); c.width=vp.width; c.height=vp.height;
     await page.render({canvasContext:c.getContext('2d'), viewport:vp}).promise;
-    canvases.push(c);
+    out.push(c.toDataURL('image/jpeg', 0.85));
   }
-  const W = Math.max(...canvases.map(c=>c.width)), H = canvases.reduce((s,c)=>s+c.height,0);
-  const out = document.createElement('canvas'); out.width=W; out.height=H;
-  const ctx = out.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-  let y=0; for(const c of canvases){ ctx.drawImage(c,0,y); y+=c.height; }
-  return out.toDataURL('image/jpeg', 0.85);
+  return out;
+}
+
+/* ---- איחוד חלקי חשבונית עם זיהוי חפיפה ----
+   מוצא את הזנב של החלק הקודם שחוזר בראש החלק הבא, ומסיר אותו.
+   כך שורות שצולמו פעמיים נעלמות, אבל מוצר שנקנה באמת פעמיים נשמר. */
+/* אותה שורה פיזית נקראת אחרת בכל צילום, לכן העוגן הוא המחיר (שנקרא אמין)
+   והטקסט נבדק בסלחנות. השוואה מדויקת נכשלת על פלט OCR אמיתי. */
+function sameLine(a, b){
+  if(Math.abs(a.price - b.price) > 0.005) return false;
+  return nameSim(a.text, b.text) >= 0.35;
+}
+function overlapLen(acc, chunk){
+  const A = acc.slice(-20);
+  const maxJ = Math.min(chunk.length, 20);
+  for(let j = maxJ-1; j >= 0; j--){
+    if(!A.some(a => sameLine(a, chunk[j]))) continue;
+    // אימות: לפחות מחצית מהשורות שנמחקות חייבות להימצא גם בחלק הקודם,
+    // אחרת זו התאמה מקרית ונאבד שורות אמיתיות.
+    let hits = 0;
+    for(let i = 0; i <= j; i++) if(A.some(a => sameLine(a, chunk[i]))) hits++;
+    if(hits >= Math.max(1, Math.ceil((j+1) * 0.5))) return j+1;
+  }
+  return 0;
+}
+function mergeChunks(chunks){
+  const valid = chunks.filter(c=>c && c.lines);
+  if(!valid.length) return {store:'', total:null, lines:[], overlapRemoved:0};
+  let lines = [];
+  let overlapRemoved = 0;
+  for(const c of valid){
+    if(!lines.length){ lines = c.lines.slice(); continue; }
+    const k = overlapLen(lines, c.lines);
+    overlapRemoved += k;
+    lines = lines.concat(c.lines.slice(k));
+  }
+  const store = (valid.find(c=>c.store)||{}).store || '';
+  const totals = valid.map(c=>c.total).filter(t=>t>0);
+  // ה"לתשלום" מופיע בחלק האחרון — ניקח את האחרון שנמצא
+  const total = totals.length ? totals[totals.length-1] : null;
+  // שורה בודדת לא יכולה לעלות על הסכום הכולל — כך נופלות שורות תשלום שנקראו כמוצר
+  if(total) lines = lines.filter(l => l.price <= total + 0.005);
+  return {store, total, lines, overlapRemoved};
 }
 async function preprocessForOcr(dataUrl){
   const img = await loadImg(dataUrl);
@@ -477,20 +641,205 @@ async function preprocessForOcr(dataUrl){
   ctx.putImageData(d,0,0);
   return c.toDataURL('image/png');
 }
+let lastApiError = '';
+/* ---- מונה שימוש ותקרה חודשית ---- */
+function curMonth(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+/* תמחור Haiku 4.5: $1 למיליון טוקני קלט, $5 למיליון טוקני פלט */
+const PRICE_IN = 1/1e6, PRICE_OUT = 5/1e6;
+function getUsage(){
+  let u; try{ u = JSON.parse(localStorage.getItem(LS.usage)); }catch(e){}
+  if(!u || u.m !== curMonth()) u = {m:curMonth(), n:0, cost:0};
+  if(typeof u.cost !== 'number') u.cost = 0;
+  return u;
+}
+function bumpUsage(usageObj){
+  const u = getUsage();
+  u.n++;
+  // עלות אמיתית לפי הטוקנים שה-API דיווח עליהם.
+  // אם הדיווח חסר — אומדן שמרני, כדי שהתקרה לעולם לא תפספס בגלל ספירת אפס.
+  const ti = (usageObj && usageObj.input_tokens) || 0;
+  const to = (usageObj && usageObj.output_tokens) || 0;
+  u.cost += (ti || to) ? (ti*PRICE_IN + to*PRICE_OUT) : 0.01;
+  localStorage.setItem(LS.usage, JSON.stringify(u));
+  renderSettings();
+}
+function getCapUsd(){ const c = parseFloat(localStorage.getItem(LS.capUsd)); return isNaN(c) ? 5 : c; }
+function fmtUsd(n){ return '$' + n.toFixed(n < 1 ? 3 : 2); }
+function apiKey(){ return localStorage.getItem(LS.apikey) || ''; }
+
+/* ---- חילוץ דרך Claude API ---- */
+const EXTRACT_PROMPT = `אתה מחלץ נתונים מחשבונית סופרמרקט ישראלית (הדפסה תרמית, לרוב דהויה).
+החזר JSON בלבד, בלי טקסט נוסף ובלי סימוני קוד, במבנה:
+{"store":"שם הרשת","total":123.45,"items":[{"text":"שם המוצר","price":12.9,"qty":1,"amount":300,"unit":"גרם"}]}
+
+מבנה השורות בחשבוניות אלו (כתיבה מימין לשמאל):
+[ברקוד ארוך] [שם המוצר] [מחיר השורה]
+ולעיתים שורת המשך מתחת:
+- "2 * 12.90  ליחידה  25.80"  => qty=2, price=25.80 (סכום השורה, לא מחיר היחידה)
+- "1.020 ק\\"ג x 64.90 לק\\"ג  66.20" => amount=1.020, unit="ק\\"ג", price=66.20
+- שורה עם מספר שלילי (למשל "-7.00") היא הנחה על המוצר שמעליה => החזר את המחיר **אחרי** ההנחה.
+
+כללים:
+- "text" = שם המוצר בלבד, בלי הברקוד ובלי המחיר. שמור על השם כפי שמודפס.
+- "price" = כמה שולם בפועל על השורה, אחרי הנחות.
+- "qty" = מספר יחידות (ברירת מחדל 1).
+- "amount"+"unit" = משקל/נפח אם מופיעים. unit הוא אחד מ: "יח'","ק\\"ג","גרם","ליטר","מ\\"ל". אם לא ברור — השמט את שניהם.
+- "total" = הסכום שליד **"לתשלום"**. שים לב: "סה\\"כ" עשוי להיות לפני הנחות, ו"סה\\"כ חסכת בקנייה זו" הוא חיסכון ולא סכום לתשלום.
+- דלג על שורות שאינן מוצרים: סיכומים, אמצעי תשלום, נקודות, חיסכון, מספרי עסקה/שובר/חברה, כותרות וכתובות.
+- שקיות ופיקדון כן נחשבים מוצרים.
+- אם שורה אינה קריאה בוודאות — השמט אותה. עדיף להחסיר מאשר להמציא.`;
+
+async function extractViaApi(){
+  const key = apiKey();
+  const multi = pickedPages.length > 1;
+  const content = pickedPages.map(p=>({
+    type:'image', source:{type:'base64', media_type:'image/jpeg', data:p.split(',')[1]}
+  }));
+  content.push({type:'text', text: EXTRACT_PROMPT + (multi
+    ? `\n\nשים לב: מצורפות ${pickedPages.length} תמונות של **אותה חשבונית ארוכה**, לפי הסדר, עם חפיפה ביניהן. החזר רשימת מוצרים אחת מאוחדת: אל תכפיל שורות שמופיעות בשתי תמונות עוקבות. שים לב שמוצר שנקנה פעמיים באמת יופיע פעמיים באותה תמונה — אותו אל תמזג.`
+    : '')});
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key': key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:4000,
+      messages:[{role:'user', content}]
+    })
+  });
+  if(!r.ok){
+    const t = await r.text().catch(()=> '');
+    if(r.status===401) throw new Error('מפתח API לא תקין');
+    if(r.status===400 && /credit balance/i.test(t)) throw new Error('נגמר הקרדיט בחשבון ה-API');
+    if(r.status===429) throw new Error('חריגה מקצב הבקשות — נסו בעוד רגע');
+    throw new Error('API ' + r.status);
+  }
+  const j = await r.json();
+  bumpUsage(j.usage);
+  const txt = (j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');
+  const m = txt.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error('תשובה לא צפויה מה-API');
+  const d = JSON.parse(m[0]);
+  return {
+    store: d.store||'',
+    total: parseFloat(d.total)||null,
+    lines: (d.items||[]).filter(i=>i && i.text && i.price>0).map(i=>({
+      text:String(i.text).trim(), price:parseFloat(i.price),
+      qty: i.qty>0 ? parseInt(i.qty) : 1,
+      amount: i.amount>0 ? parseFloat(i.amount) : null,
+      unit: UNITS.includes(i.unit) ? i.unit : null
+    }))
+  };
+}
+
+/* ---- חילוץ מקומי (Tesseract) — חינמי, גיבוי ---- */
+async function extractViaOcr(st){
+  st.textContent = "טוען מנוע זיהוי (בפעם הראשונה ~15 שנ')...";
+  await ensureOcr();
+  const worker = await Tesseract.createWorker('heb+eng', 1, {
+    logger: m => { if(m.status==='recognizing text') st.textContent = 'קורא את החשבונית... ' + Math.round(m.progress*100) + '%'; }
+  });
+  const chunks = [];
+  try{
+    for(let i=0;i<pickedPages.length;i++){
+      if(pickedPages.length>1) st.textContent = `קורא חלק ${i+1} מתוך ${pickedPages.length}...`;
+      const pre = await preprocessForOcr(pickedPages[i]);
+      const {data} = await worker.recognize(pre, {}, {blocks:true, text:true});
+      chunks.push(parseOcrData(data));
+    }
+  } finally { await worker.terminate(); }
+  return mergeChunks(chunks);
+}
+const SKIP_RE = /סה"?כ|סך|לתשלום|מזומן|עודף|אשראי|כרטיס|ויזה|ישראכרט|נקודות|חסכת|חסכון|עסקה|קופה|תודה|ברקוד|מעמ|שובר|הנחות|חברה|תוכנית|מסוף|total|cash|change|visa/i;
+function parseOcrData(data){
+  const raw = ocrLines(data);
+  let total = null, subtotal = null, store = '';
+  for(const l of raw){
+    // כותרות מודפסות במרווח ("ל ת ש ל ו ם") — מסירים רווחים כדי לזהות אותן
+    // גם רווחים וגם תווי זבל של OCR ("ל ת ש ל | ם") מוסרים לפני הזיהוי
+    const t = normHe(l.text).replace(/[^א-תa-z]/g,'');
+    if(/חסכ/.test(t)) continue;                       // "סה\"כ חסכת בקנייה זו" אינו סכום לתשלום
+    const ps = linePrices(l.text).filter(p=>p>0);
+    if(!ps.length) continue;
+    if(/לתשל/.test(t)) total = Math.max(total||0, ...ps);        // זהו הסכום הקובע (אחרי הנחות)
+    else if(/סהכ|סכהכל|total/.test(t)) subtotal = Math.max(subtotal||0, ...ps);
+  }
+  if(total == null) total = subtotal;                 // אין "לתשלום"? ניפול לסכום ביניים
+  if(raw.length && !linePrices(raw[0].text).length) store = raw[0].text.slice(0,30);
+
+  const lines = [];
+  for(const l of raw){
+    const t = l.text;
+    // שורת המשך: כמות × מחיר ליחידה (למשל "2 * 12.90" או "1.020 ק\"ג x 64.90 לק\"ג")
+    const cont = t.match(/(\d+(?:\.\d+)?)\s*(ק"ג|קג|גרם|גר'|ליטר|מ"ל)?\s*[*xX×]\s*(\d+[.,]\d{2})/);
+    if(cont && lines.length){
+      const prev = lines[lines.length-1];
+      const q = parseFloat(cont[1]);
+      if(cont[2]){
+        prev.amount = q;
+        prev.unit = /ק/.test(cont[2]) ? 'ק"ג' : /גר/.test(cont[2]) ? 'גרם' : /^מ/.test(cont[2]) ? 'מ"ל' : 'ליטר';
+      } else if(q >= 1 && Number.isInteger(q)) {
+        prev.qty = q;
+      }
+      continue;
+    }
+    const neg = t.match(/-\s*(\d+[.,]\d{2})/);        // שורת הנחה
+    if(neg && lines.length){
+      const disc = parseFloat(neg[1].replace(',','.'));
+      const prev = lines[lines.length-1];
+      if(disc > 0 && disc < prev.price){ prev.price = +(prev.price - disc).toFixed(2); prev.discounted = true; }
+      continue;
+    }
+    if(SKIP_RE.test(t)) continue;
+    const ps = linePrices(t).filter(p=>p>0);
+    if(!ps.length) continue;
+    const price = ps[ps.length-1];
+    if(total && Math.abs(price-total) < 0.005) continue;
+    if(subtotal && Math.abs(price-subtotal) < 0.005) continue;
+    // ניקוי: ברקודים (7+ ספרות) ומחירים
+    let text = t.replace(/\b\d{7,}\b/g,' ')
+                .replace(/(\d{1,4})[.,](\d{2})(?!\d)/g,' ')
+                .replace(/\s+/g,' ').trim();
+    if(text.replace(/[^א-תa-zA-Z]/g,'').length < 2) continue;
+    const am = t.match(/(\d+(?:\.\d+)?)\s*(גרם|גר'|ג'|ק"ג|קג|מ"ל|מל|ליטר|ל')/);
+    let amount = null, unit = null;
+    if(am){
+      amount = parseFloat(am[1]);
+      const u = am[2];
+      unit = /ק/.test(u) ? 'ק"ג' : /גר|ג'/.test(u) ? 'גרם' : /^מ/.test(u) ? 'מ"ל' : 'ליטר';
+    }
+    lines.push({text, price, amount, unit, qty:1, conf:l.conf});
+  }
+  return {store, total, lines};
+}
+
 async function extractReceipt(){
-  if(!pickedReceiptFull){ toast('קודם צרפו חשבונית'); return; }
+  if(!pickedPages.length){ toast('קודם צרפו חשבונית'); return; }
   const st = $('ocrStatus'); st.style.display='block';
   $('ocrBtn').disabled = true;
+  const key = apiKey(), usage = getUsage(), cap = getCapUsd();
   try{
-    st.textContent = "טוען מנוע זיהוי (בפעם הראשונה ~15 שנ')...";
-    await ensureOcr();
-    const pre = await preprocessForOcr(pickedReceiptFull);
-    const worker = await Tesseract.createWorker('heb+eng', 1, {
-      logger: m => { if(m.status==='recognizing text') st.textContent = 'קורא את החשבונית... ' + Math.round(m.progress*100) + '%'; }
-    });
-    const {data} = await worker.recognize(pre, {}, {blocks:true, text:true});
-    await worker.terminate();
-    applyOcr(data);
+    let res, via;
+    if(key && usage.cost >= cap){
+      toast('הגעתם לתקרה החודשית — משתמש בזיהוי החינמי');
+      res = await extractViaOcr(st); via = 'ocr-cap';
+    } else if(key){
+      st.textContent = 'שולח את החשבונית לזיהוי מדויק...';
+      try{ res = await extractViaApi(); via = 'api'; lastApiError = ''; }
+      catch(e){
+        lastApiError = e.message;
+        st.textContent = 'הזיהוי המדויק נכשל (' + e.message + ') — עובר לזיהוי החינמי...';
+        res = await extractViaOcr(st); via = 'ocr-fallback';
+      }
+    } else {
+      res = await extractViaOcr(st); via = 'ocr';
+    }
+    applyExtraction(res, via);
   }catch(e){
     console.error(e);
     st.textContent = 'החילוץ נכשל — אפשר להזין ידנית. (' + e.message + ')';
@@ -506,110 +855,193 @@ function ocrLines(data){
     out = (data.text||'').split('\n').map(t=>({text:t.trim(), conf:50}));
   return out.filter(l=>l.text.length>1);
 }
-function normHe(s){ return String(s).replace(/["'׳״`.,\-–_]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+const FINALS = {'ם':'מ','ן':'נ','ץ':'צ','ף':'פ','ך':'כ'};
+const STOPW = new Set(['של','עם','ללא','בטעם','טעם','ארוז','אריזה','מארז','חבילה','יח','גרם','גר','קג','ק"ג','מל','ליטר','ל','אחוז','מבצע','משקל']);
+function normHe(s){
+  return String(s)
+    .replace(/[֑-ׇ]/g,'')                 // ניקוד
+    .replace(/[םןץףך]/g, c=>FINALS[c])              // אותיות סופיות
+    .replace(/["'׳״`.,\-–—_()\[\]:;\/\\*+]/g,' ')   // פיסוק
+    .replace(/\d+(\.\d+)?\s*%/g,' ')                // אחוזי שומן
+    .replace(/\b\d+(\.\d+)?\s*(גרם|גר|ג|ק"ג|קג|מ"ל|מל|ליטר|יח|יחידות)\b/g,' ') // משקלים
+    .replace(/\d+(\.\d+)?/g,' ')                    // שאר מספרים
+    .replace(/\s+/g,' ').trim().toLowerCase();
+}
+function heTokens(s){
+  return normHe(s).split(' ')
+    .map(t => t.length>3 && t.startsWith('ה') ? t.slice(1) : t)  // ה' הידיעה
+    .filter(t => t.length>1 && !STOPW.has(t));
+}
 function nameSim(a, b){
-  a = normHe(a); b = normHe(b);
-  if(!a || !b) return 0;
-  if(b.includes(a) || a.includes(b)) return 0.95;
-  const ta = a.split(' '), tb = b.split(' ');
+  const na = normHe(a), nb = normHe(b);
+  if(!na || !nb) return 0;
+  if(na === nb) return 1;
+  const ta = heTokens(a), tb = heTokens(b);
+  if(!ta.length || !tb.length) return 0;
   let hit = 0;
   for(const t of ta){
-    if(tb.includes(t)) hit++;
-    else if(t.length>2 && tb.some(u=>u.length>2 && (u.includes(t)||t.includes(u)))) hit += 0.7;
+    if(tb.includes(t)) hit += 1;
+    else if(t.length>2 && tb.some(u => u.length>2 && (u.startsWith(t)||t.startsWith(u)))) hit += 0.8;
   }
-  return hit/ta.length;
+  // יחס דו-כיווני: מונע ש"חלב" יתאים מושלם ל"חלב סויה שקדים דל שומן"
+  const cov = hit/ta.length, covB = hit/tb.length;
+  return (cov + covB) / 2 + Math.min(cov, covB) * 0.15;
+}
+/* המילון הנלמד: שורת חשבונית -> שם קנוני */
+function learnLine(srcText, name){
+  const k = normHe(srcText);
+  if(k && name) { state.lineMap[k] = name; }
+}
+function lookupLine(srcText){
+  const k = normHe(srcText);
+  if(state.lineMap[k]) return canon(state.lineMap[k]);
+  // התאמה חלקית מול מיפויים קודמים
+  let best = null;
+  for(const [key, val] of Object.entries(state.lineMap||{})){
+    const s = nameSim(k, key);
+    if(s >= 0.75 && (!best || s > best.s)) best = {s, val};
+  }
+  return best ? canon(best.val) : null;
+}
+/* ניחוש שם מוצר לשורת חשבונית: מילון -> מוצרים מוכרים -> ריק */
+function guessProduct(srcText){
+  const learned = lookupLine(srcText);
+  if(learned) return {name: learned, conf: 'high'};
+  const known = [...new Set([...productsWithPrices(), ...Object.keys(state.catalog),
+                             ...activeItems().map(i=>i.name)])].map(canon);
+  let best = null;
+  for(const k of new Set(known)){
+    const s = nameSim(srcText, k);
+    if(s >= 0.5 && (!best || s > best.s)) best = {s, name:k};
+  }
+  if(best) return {name: best.name, conf: best.s >= 0.75 ? 'high' : 'low'};
+  return {name: '', conf: 'none'};
 }
 function linePrices(text){
   const out = []; const re = /(\d{1,4})[.,](\d{2})(?!\d)/g; let m;
   while((m = re.exec(text))){ const v = parseFloat(m[1]+'.'+m[2]); if(v>0 && v<3000) out.push(v); }
   return out;
 }
-function applyOcr(data){
-  const lines = ocrLines(data);
+/* החשבונית היא מקור האמת: כל שורה הופכת לשורת קנייה, והרשימה רק מסייעת בשיום */
+function applyExtraction(res, via){
   const st = $('ocrStatus');
-  if(!lines.length){ st.textContent = 'לא זוהה טקסט בחשבונית 😕 נסו תמונה חדה וישרה יותר.'; return; }
-  // total
-  const totKeys = ['סהכ','סה כ','לתשלום','סך הכל','total'];
-  let total = null;
-  for(const l of lines){
-    const t = normHe(l.text);
-    if(totKeys.some(k=>t.includes(k))){
-      const ps = linePrices(l.text);
-      if(ps.length) total = Math.max(total||0, ...ps);
-    }
+  const apiNote = (via==='ocr-fallback' && lastApiError)
+    ? ` <b style="color:var(--red)">⚠️ הזיהוי המדויק נכשל: ${esc(lastApiError)} — בדקו בהגדרות.</b>` : '';
+  if(!res.lines.length){
+    st.innerHTML = 'לא זוהו שורות מוצרים 😕 ' +
+      (via.startsWith('ocr') ? 'נסו תמונה חדה וישרה יותר, או הזינו ידנית.' : 'הזינו ידנית.') + apiNote;
+    return;
   }
-  if(total && !$('fTotal').value) $('fTotal').value = total;
-  // match items
-  let sure = 0, unsure = 0;
-  finishRows.forEach((it, i)=>{
-    if(!$('pp_'+i) || $('pp_'+i).value) return; // אל תדרוס הזנה ידנית
-    let best = null;
-    for(const l of lines){
-      const ps = linePrices(l.text); if(!ps.length) continue;
-      const s = nameSim(it.name, l.text); if(s < 0.3) continue;
-      const score = s * (0.5 + 0.5*Math.min(l.conf,95)/95);
-      if(!best || score > best.score) best = {score, line:l, price:ps[ps.length-1], simv:s};
-    }
-    const el = $('ph_'+i), row = el.closest('.prow');
-    row.style.background = '';
-    if(best && best.simv >= 0.45){
-      $('pp_'+i).value = best.price;
-      const am = best.line.text.match(/(\d+(?:\.\d+)?)\s*(גרם|גר'|ג'|ק"ג|קג|מ"ל|מל|ליטר|ל')/);
-      if(am){
-        $('pa_'+i).value = am[1];
-        const u = am[2];
-        $('pu_'+i).value = /ק/.test(u) ? 'ק"ג' : /גר|ג'/.test(u) ? 'גרם' : /מ/.test(u) ? 'מ"ל' : 'ליטר';
+  finishRows.forEach(r=>syncRowFromDom(r.rid));
+  // החשבונית גוברת על ברירת המחדל (החנות הקודמת), אך לא על מה שהמשתמש הקליד
+  if(res.store && (storePrefilled || !$('fStore').value.trim())){
+    $('fStore').value = res.store; storePrefilled = false;
+  }
+  if(res.total && !$('fTotal').value) $('fTotal').value = res.total;
+
+  const listRows = finishRows.filter(r=>!r.src);   // ממה שסומן ברשימה
+  const used = new Set();
+  const newRows = [];
+  let known = 0, needMap = 0;
+
+  for(const l of res.lines){
+    const g = guessProduct(l.text);
+    let name = g.name, conf = g.conf;
+    // אם לא זוהה — נסה להתאים לפריט שסומן ברשימה ועדיין לא שובץ
+    if(!name){
+      let best = null;
+      for(const lr of listRows){
+        if(used.has(lr.rid)) continue;
+        const s = nameSim(l.text, lr.name);
+        if(s >= 0.45 && (!best || s > best.s)) best = {s, lr};
       }
-      priceHint(i);
-      if(best.simv >= 0.8 && best.line.conf >= 55){
-        sure++;
-        el.textContent = '📄 זוהה בחשבונית · ' + el.textContent;
-      } else {
-        unsure++;
-        el.className = 'phint up';
-        el.textContent = `❓ לא בטוח — זוהה "${best.line.text.slice(0,32)}" (${fmtIls(best.price)}). אשרו או תקנו`;
-        row.style.background = '#fffbeb';
-      }
+      if(best){ name = best.lr.name; conf = best.s >= 0.7 ? 'high' : 'low'; used.add(best.lr.rid); }
     } else {
-      el.className = 'phint';
-      el.textContent = 'לא נמצא בחשבונית — הזינו ידנית';
+      const lr = listRows.find(x=>!used.has(x.rid) && canon(x.name)===canon(name));
+      if(lr) used.add(lr.rid);
     }
-  });
-  st.innerHTML = `זוהו ${sure+unsure} מתוך ${finishRows.length} פריטים` +
-    (unsure ? ` · <b style="color:var(--amber)">${unsure} לא ודאיים מסומנים בצהוב — אשרו או תקנו</b>` : '') +
-    (total ? ` · סה"כ שזוהה: ${fmtIls(total)}` : ' · סה"כ לא זוהה — הזינו ידנית');
+    if(conf === 'high') known++; else needMap++;
+    newRows.push(makeRow({
+      name, conf, src:l.text, p:l.price, qty: l.qty||1,
+      amt: l.amount ?? '', u: l.unit || UNITS[0]
+    }));
+  }
+  // פריטים שסומנו ברשימה אך לא הופיעו בחשבונית — נשארים להזנה ידנית
+  const leftovers = listRows.filter(r=>!used.has(r.rid));
+  finishRows = [...newRows, ...leftovers];
+  renderFinishRows();
+
+  const viaLbl = via==='api' ? '🎯 זיהוי מדויק'
+    : via==='ocr-fallback' ? '🆓 זיהוי חינמי (גיבוי)'
+    : via==='ocr-cap' ? '🆓 זיהוי חינמי (הגעתם לתקרה)' : '🆓 זיהוי חינמי';
+  st.innerHTML = `${viaLbl} · חולצו ${res.lines.length} שורות` +
+    (known ? ` · ${known} זוהו אוטומטית` : '') +
+    (needMap ? ` · <b style="color:var(--amber)">${needMap} דורשות שיום חד-פעמי</b>` : '') +
+    (leftovers.length ? ` · ${leftovers.length} פריטים מהרשימה לא נמצאו בחשבונית` : '')
+    + (res.overlapRemoved ? ` · הוסרו ${res.overlapRemoved} שורות כפולות מהחפיפה` : '')
+    + sumCheckHtml(res) + apiNote;
 }
+/* בדיקת שפיות: סכום השורות מול "לתשלום". תופס גם כפילויות מחפיפה וגם שורות חסרות. */
+function sumCheckHtml(res){
+  if(!res.total) return '';
+  const sum = res.lines.reduce((s,l)=>s+(parseFloat(l.price)||0), 0);
+  const diff = sum - res.total;
+  if(Math.abs(diff) <= Math.max(0.05, res.total*0.01))
+    return ` · <b style="color:var(--green-dark)">✓ סכום השורות תואם ל-${fmtIls(res.total)}</b>`;
+  return ` · <b style="color:var(--amber)">⚠️ סכום השורות ${fmtIls(sum)} מול ${fmtIls(res.total)} לתשלום (הפרש ${fmtIls(Math.abs(diff))}) — ${diff>0?'ייתכן שורות כפולות':'ייתכן שורות חסרות'}</b>`;
+}
+
 function savePurchase(){
+  finishRows.forEach(r=>syncRowFromDom(r.rid));
   const store = $('fStore').value.trim();
   const total = parseFloat($('fTotal').value);
   if(!store){ toast('נא להזין שם חנות'); return; }
   if(!(total>0)){ toast('נא להזין סכום'); return; }
-  const done = finishRows;
+  // איחוד כפילויות: אם אותו מוצר מופיע גם משורת חשבונית וגם מהרשימה — השורה עם המחיר מנצחת
+  const byName = new Map();
+  for(const r of finishRows.filter(r=>r.name)){
+    const k = canon(r.name);
+    const ex = byName.get(k);
+    if(!ex){ byName.set(k, r); continue; }
+    const rHas = parseFloat(r.p)>0, exHas = parseFloat(ex.p)>0;
+    if(rHas && !exHas) byName.set(k, {...r, qty: Math.max(r.qty||1, ex.qty||1)});
+    else if(!rHas && exHas) ex.qty = Math.max(r.qty||1, ex.qty||1);
+    else if(rHas && exHas){ byName.set(k, {...ex, qty:(ex.qty||1)}); ex.extraPrice = true; }
+  }
+  const rows = [...byName.values()];
+  const unnamed = finishRows.filter(r=>!r.name && r.p);
+  if(unnamed.length && !confirm(`${unnamed.length} שורות בלי שם מוצר לא יישמרו למעקב מחירים. להמשיך?`)) return;
+
   const id = uid();
-  const itemsData = done.map((it,i)=>{
-    const o = {n:it.name, q:it.qty||1};
-    const pEl = $('pp_'+i);
-    const pv = pEl ? parseFloat(pEl.value) : NaN;
+  const itemsData = rows.map(r=>{
+    const o = {n: canon(r.name), q: r.qty||1};
+    const pv = parseFloat(r.p);
     if(pv>0){
       o.p = pv;
-      const a = parseFloat($('pa_'+i).value);
+      const a = parseFloat(r.amt);
       if(a>0) o.amt = a;
-      o.u = $('pu_'+i).value;
+      o.u = r.u;
     }
+    // לימוד: שורת החשבונית -> השם הקנוני. מכאן זה יזוהה לבד לנצח.
+    if(r.src) learnLine(r.src, o.n);
+    bumpCatalog(o.n);
     return o;
   });
   state.purchases.push({
     id, date:now(), updatedAt:now(), store, total,
     items: itemsData,
-    itemNames: done.map(i=> (i.qty||1)>1 ? `${i.name} ×${i.qty}` : i.name),
+    itemNames: rows.map(r=> (r.qty||1)>1 ? `${r.name} ×${r.qty}` : r.name),
     hasReceipt: !!pickedReceipt
   });
   if(!state.stores.includes(store)) state.stores.push(store);
-  for(const it of done){ it.deleted=true; it.updatedAt=now(); }
+  // הסרת הפריטים שסומנו מהרשימה
+  for(const it of activeItems().filter(i=>i.done)){ it.deleted=true; it.updatedAt=now(); }
   if(pickedReceipt){
     receiptCache[id]=pickedReceipt; pendingReceipts[id]=pickedReceipt; pruneReceipts();
   }
-  closeFinish(); afterChange(); toast('הקנייה נשמרה 🎉');
+  closeFinish(); afterChange();
+  const learned = rows.filter(r=>r.src).length;
+  toast(learned ? `נשמר 🎉 ${learned} מיפויים נלמדו` : 'הקנייה נשמרה 🎉');
 }
 
 /* ================= restore / suggestions ================= */
@@ -827,6 +1259,33 @@ function renderSettings(){
   $('setDisconnected').style.display = on?'none':'block';
   $('setConnected').style.display = on?'block':'none';
   if(on) $('gistInfo').textContent = gistId ? `הנתונים נשמרים ב-Gist פרטי (${gistId.slice(0,8)}…)` : '';
+  const hasKey = !!apiKey();
+  $('setNoKey').style.display = hasKey?'none':'block';
+  $('setKey').style.display = hasKey?'block':'none';
+  if(hasKey){
+    const u = getUsage(), cap = getCapUsd();
+    const pct = Math.min(100, 100*u.cost/cap);
+    $('usageInfo').innerHTML = `החודש: <b>${fmtUsd(u.cost)}</b> מתוך ${fmtUsd(cap)} · ${u.n} חשבוניות`;
+    $('usageBar').style.width = pct + '%';
+    $('usageBar').style.background = pct > 80 ? 'var(--red)' : 'var(--green)';
+    $('capInput').value = cap;
+  }
+}
+function saveKey(){
+  const k = $('keyInput').value.trim();
+  if(!/^sk-ant-/.test(k)){ toast('מפתח לא תקין (מתחיל ב-sk-ant-)'); return; }
+  localStorage.setItem(LS.apikey, k);
+  $('keyInput').value='';
+  renderSettings(); toast('המפתח נשמר 🎯');
+}
+function clearKey(){
+  if(!confirm('להסיר את המפתח? החילוץ יחזור לזיהוי החינמי.')) return;
+  localStorage.removeItem(LS.apikey); renderSettings();
+}
+function saveCap(){
+  const c = parseFloat($('capInput').value);
+  if(!(c>0)){ toast('הזינו סכום חיובי'); return; }
+  localStorage.setItem(LS.capUsd, c); renderSettings(); toast('התקרה עודכנה');
 }
 
 /* ================= tabs / toast ================= */
@@ -945,6 +1404,38 @@ async function viewReceipt(pid){
   }
   $('viewBody').innerHTML = img ? `<img id="viewImg" src="${img}">`
     : '<div class="empty">החשבונית לא נמצאה במכשיר זה ולא בענן 😕</div>';
+}
+
+/* ================= הדגמה ================= */
+const DEMO = {store:'יוחננוף', total:235.27, lines:[
+  {text:'אשכוליות יח', price:3.90, qty:1},
+  {text:'ירי מיקס ארוז', price:9.90, qty:1},
+  {text:'בצל ירוק יח', price:5.90, qty:1},
+  {text:'כוסברה יח', price:3.90, qty:1},
+  {text:'צרור נענע', price:3.50, qty:1},
+  {text:'בצל יבש', price:6.17, amount:1.045, unit:'ק"ג'},
+  {text:'קישואים', price:9.60, amount:1.215, unit:'ק"ג'},
+  {text:'צמר חמד איטלקי', price:17.90, qty:1},
+  {text:'אבוקדו', price:7.52, amount:0.760, unit:'ק"ג'},
+  {text:'תפו"א לבן בתפזורת', price:8.38, amount:1.420, unit:'ק"ג'},
+  {text:'סחוג בקר פרימיום טרי', price:66.20, amount:1.020, unit:'ק"ג'},
+  {text:'מבצע מארז תפוחים', price:14.90, qty:1},
+  {text:'קנור קנידל 130 גרם', price:25.80, qty:2},
+  {text:'מארז מטליות לחות', price:14.90, qty:1},
+  {text:'שמן זית כתית מעולה', price:19.90, qty:1},
+  {text:'במבה מארז 25x10 גר', price:16.90, qty:1}
+], overlapRemoved:3};
+function runDemo(){
+  if(!confirm('ההדגמה תוסיף 3 פריטים לרשימה ותפתח את מסך סיום הקנייה עם חשבונית לדוגמה.\nלא יישמר שום דבר עד שתלחצו "שמירת קנייה".\nלהמשיך?')) return;
+  ['אבוקדו','שמן זית','במבה'].forEach(n=>addItem(n));
+  for(const it of activeItems()) if(['אבוקדו','שמן זית','במבה'].includes(it.name)){ it.done = true; it.updatedAt = now(); }
+  saveLocal(); render();
+  showTab('list');
+  openFinish();
+  pickedReceipt = null;                 // הדגמה — בלי תמונה אמיתית
+  $('ocrStatus').style.display = 'block';
+  applyExtraction(DEMO, 'api');
+  toast('כך זה ייראה עם חשבונית אמיתית 🧪');
 }
 
 /* ================= backup ================= */
