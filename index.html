@@ -202,7 +202,11 @@ code{background:var(--bg);padding:2px 6px;border-radius:6px;font-size:.82rem;dir
         </div>
         <div class="muted" style="margin-top:4px">להשוואה: חשבונית עולה כ-$0.004 (כאגורה וחצי), כך ש-$5 מספיקים לכ-1,200 חשבוניות.</div>
       </div>
-      <button class="danger" onclick="clearKey()">הסרת המפתח מהמכשיר</button>
+      <div class="muted" id="keyTest" style="display:none;margin-bottom:10px"></div>
+      <div class="row">
+        <button class="ghost" style="flex:1" onclick="testApiKey()">🔍 בדיקת חיבור</button>
+        <button class="danger" onclick="clearKey()">הסרת המפתח</button>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -665,7 +669,7 @@ function bumpUsage(usageObj){
 }
 function getCapUsd(){ const c = parseFloat(localStorage.getItem(LS.capUsd)); return isNaN(c) ? 5 : c; }
 function fmtUsd(n){ return '$' + n.toFixed(n < 1 ? 3 : 2); }
-function apiKey(){ return localStorage.getItem(LS.apikey) || ''; }
+function apiKey(){ return sanitizeKey(localStorage.getItem(LS.apikey) || ''); }
 
 /* ---- חילוץ דרך Claude API ---- */
 const EXTRACT_PROMPT = `אתה מחלץ נתונים מחשבונית סופרמרקט ישראלית (הדפסה תרמית, לרוב דהויה).
@@ -716,8 +720,9 @@ async function extractViaApi(){
     const t = await r.text().catch(()=> '');
     if(r.status===401) throw new Error('מפתח API לא תקין');
     if(r.status===400 && /credit balance/i.test(t)) throw new Error('נגמר הקרדיט בחשבון ה-API');
+    if(r.status===413 || /too large|too_large/i.test(t)) throw new Error('התמונות כבדות מדי — צלמו פחות חלקים בבת אחת');
     if(r.status===429) throw new Error('חריגה מקצב הבקשות — נסו בעוד רגע');
-    throw new Error('API ' + r.status);
+    throw new Error('API ' + r.status + ' ' + t.slice(0,80));
   }
   const j = await r.json();
   bumpUsage(j.usage);
@@ -832,7 +837,10 @@ async function extractReceipt(){
       st.textContent = 'שולח את החשבונית לזיהוי מדויק...';
       try{ res = await extractViaApi(); via = 'api'; lastApiError = ''; }
       catch(e){
-        lastApiError = e.message;
+        // TypeError = הבקשה לא יצאה כלל (רשת/חסימה), ולא תשובה שגויה מהשרת
+        lastApiError = (e.name === 'TypeError')
+          ? `הבקשה לא יצאה מהמכשיר (${e.message}) — בדקו חיבור, חוסם פרסומות או מצב פרטי, ולחצו "בדיקת חיבור" בהגדרות`
+          : e.message;
         st.textContent = 'הזיהוי המדויק נכשל (' + e.message + ') — עובר לזיהוי החינמי...';
         res = await extractViaOcr(st); via = 'ocr-fallback';
       }
@@ -1271,12 +1279,51 @@ function renderSettings(){
     $('capInput').value = cap;
   }
 }
+/* תו נסתר אחד במפתח (רווח, שורה חדשה, מקף "חכם" מהעתקה בנייד)
+   גורם ל-fetch לזרוק TypeError עוד לפני שהבקשה יוצאת. לכן מנקים בתקיפות. */
+function sanitizeKey(raw){
+  return String(raw).replace(/[​-‍﻿]/g,'').replace(/\s+/g,'').trim();
+}
 function saveKey(){
-  const k = $('keyInput').value.trim();
-  if(!/^sk-ant-/.test(k)){ toast('מפתח לא תקין (מתחיל ב-sk-ant-)'); return; }
+  const k = sanitizeKey($('keyInput').value);
+  if(!/^sk-ant-[A-Za-z0-9_\-]+$/.test(k)){
+    toast(/^sk-ant-/.test(k) ? 'המפתח מכיל תווים לא חוקיים — העתיקו שוב' : 'מפתח לא תקין (מתחיל ב-sk-ant-)');
+    return;
+  }
   localStorage.setItem(LS.apikey, k);
   $('keyInput').value='';
   renderSettings(); toast('המפתח נשמר 🎯');
+  testApiKey();
+}
+/* בדיקת חיבור אמיתית בעלות זניחה — מדווחת את הסיבה המדויקת */
+async function testApiKey(){
+  const el = $('keyTest'); if(!el) return;
+  const key = apiKey();
+  if(!key){ el.textContent = 'אין מפתח שמור.'; return; }
+  el.style.display='block';
+  el.innerHTML = '🔄 בודק חיבור...';
+  if(!/^sk-ant-[A-Za-z0-9_\-]+$/.test(key)){
+    el.innerHTML = '<b style="color:var(--red)">❌ המפתח השמור מכיל תווים לא חוקיים. הסירו והדביקו מחדש.</b>';
+    return;
+  }
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001', max_tokens:1,
+        messages:[{role:'user', content:'hi'}]})
+    });
+    if(r.ok){ el.innerHTML = '<b style="color:var(--green-dark)">✅ החיבור תקין — הזיהוי המדויק פעיל.</b>'; return; }
+    const t = await r.text().catch(()=> '');
+    if(r.status===401) el.innerHTML = '<b style="color:var(--red)">❌ המפתח נדחה (401). ודאו שהעתקתם את כולו, או צרו מפתח חדש.</b>';
+    else if(r.status===400 && /credit/i.test(t)) el.innerHTML = '<b style="color:var(--red)">❌ אין קרדיט בחשבון ה-API. טענו יתרה בקונסולה.</b>';
+    else if(r.status===429) el.innerHTML = '<b style="color:var(--amber)">⚠️ חריגה זמנית מקצב הבקשות. נסו שוב בעוד רגע.</b>';
+    else el.innerHTML = `<b style="color:var(--red)">❌ שגיאה ${r.status}: ${esc(t.slice(0,120))}</b>`;
+  }catch(e){
+    el.innerHTML = `<b style="color:var(--red)">❌ הבקשה לא יצאה כלל (${esc(e.name)}: ${esc(e.message)}).</b>`
+      + '<div class="muted">בדרך כלל: אין אינטרנט, חוסם פרסומות/מצב פרטי, או מצב ננעל. נסו רשת אחרת או דפדפן אחר.</div>';
+  }
 }
 function clearKey(){
   if(!confirm('להסיר את המפתח? החילוץ יחזור לזיהוי החינמי.')) return;
