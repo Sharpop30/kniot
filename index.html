@@ -736,6 +736,33 @@ async function apiImages(){
   for(const p of pickedPages) out.push(...await sliceTall(p));
   return out.slice(0, 12);                                      // גבול הגיוני לעלות
 }
+/* המודל עלול לעטוף את ה-JSON בטקסט או ב-```json```.
+   חיפוש חמדני של {...} בולע גם פרוזה ונשבר, לכן סורקים סוגריים מאוזנים
+   תוך התעלמות ממחרוזות, ובוחרים את המועמד הגדול ביותר שנפרס בהצלחה. */
+function extractJson(txt){
+  let s = String(txt||'').trim()
+    .replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+  try{ return JSON.parse(s); }catch(e){}
+  const cands = [];
+  let depth=0, start=-1, inStr=false, esc=false;
+  for(let i=0;i<s.length;i++){
+    const c = s[i];
+    if(inStr){
+      if(esc) esc=false;
+      else if(c==='\\') esc=true;
+      else if(c==='"') inStr=false;
+      continue;
+    }
+    if(c==='"'){ inStr=true; continue; }
+    if(c==='{'){ if(depth===0) start=i; depth++; }
+    else if(c==='}'){ depth--; if(depth===0 && start>=0){ cands.push(s.slice(start,i+1)); start=-1; } }
+  }
+  cands.sort((a,b)=>b.length-a.length);
+  for(const c of cands){
+    try{ const o = JSON.parse(c); if(o && (Array.isArray(o.items) || o.total!=null)) return o; }catch(e){}
+  }
+  throw new Error('לא הצלחתי לקרוא את תשובת ה-API (פורמט לא צפוי)');
+}
 async function extractViaApi(){
   const key = apiKey();
   const imgs = await apiImages();
@@ -756,8 +783,10 @@ async function extractViaApi(){
     },
     body: JSON.stringify({
       model:'claude-haiku-4-5-20251001',
-      max_tokens:4000,
-      messages:[{role:'user', content}]
+      max_tokens:8000,
+      messages:[{role:'user', content}],
+      // התחלה כפויה של JSON — מונעת פתיח מילולי לפני האובייקט
+      system:'החזר JSON תקין בלבד. בלי הקדמה, בלי הסבר, בלי סימוני קוד.'
     })
   });
   if(!r.ok){
@@ -771,9 +800,9 @@ async function extractViaApi(){
   const j = await r.json();
   bumpUsage(j.usage);
   const txt = (j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');
-  const m = txt.match(/\{[\s\S]*\}/);
-  if(!m) throw new Error('תשובה לא צפויה מה-API');
-  const d = JSON.parse(m[0]);
+  const d = extractJson(txt);
+  if(j.stop_reason === 'max_tokens' && !(d.items||[]).length)
+    throw new Error('התשובה נקטעה — נסו לצלם פחות חלקים בבת אחת');
   return {
     store: d.store||'',
     total: parseFloat(d.total)||null,
