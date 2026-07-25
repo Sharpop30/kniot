@@ -1,5 +1,5 @@
 /* service worker — הקניות שלנו */
-const CACHE = 'kniot-v9';
+const CACHE = 'kniot-v10';
 const CDN_CACHE = 'kniot-cdn-v1';
 
 self.addEventListener('install', e => {

@@ -549,7 +549,7 @@ async function convertHeic(f){
 async function imageFileToDataUrl(f){
   const url = URL.createObjectURL(f);
   try{
-    return await resizeDataUrl(url, 2000, 0.85);
+    return await resizeDataUrl(url, 3400, 0.92);   // שומרים רזולוציה גבוהה — החיתוך לרצועות מסתמך עליה
   }catch(e){
     URL.revokeObjectURL(url);
     if(!isHeic(f)) throw new Error('הדפדפן לא הצליח לפתוח את התמונה (' + (f.type||'ללא סוג') + ')');
@@ -561,7 +561,7 @@ async function imageFileToDataUrl(f){
       throw new Error('לא הצלחתי להמיר את קובץ ה-HEIC. פתרון מהיר: שלחו לעצמכם את התמונה בוואטסאפ (ההמרה ל-JPG אוטומטית), או בהגדרות האייפון: מצלמה ← פורמטים ← "תואם ביותר".');
     }
     const u2 = URL.createObjectURL(Array.isArray(blob)?blob[0]:blob);
-    return await resizeDataUrl(u2, 2000, 0.85);
+    return await resizeDataUrl(u2, 3400, 0.92);
   }
 }
 async function resizeDataUrl(src, max, q){
@@ -709,14 +709,42 @@ const EXTRACT_PROMPT = `אתה מחלץ נתונים מחשבונית סופרמ
 - שקיות ופיקדון כן נחשבים מוצרים.
 - אם שורה אינה קריאה בוודאות — השמט אותה. עדיף להחסיר מאשר להמציא.`;
 
+/* ה-API מקטין תמונה כך שהצלע הארוכה ≤ ~1568px. חשבונית צרה וארוכה
+   (למשל 990×3378) מצטמצמת לרוחב ~460px והטקסט הופך לבלתי קריא.
+   לכן חותכים אותה לרצועות כמעט-ריבועיות, שנשארות ברזולוציה מלאה. */
+const API_MAX_EDGE = 1500;
+async function sliceTall(dataUrl){
+  const img = await loadImg(dataUrl);
+  if(img.height <= img.width * 1.6) return [dataUrl];          // כבר בפרופורציה סבירה
+  const band = Math.round(img.width * 1.4);                     // גובה רצועה
+  const step = Math.round(band * 0.85);                         // 15% חפיפה בין רצועות
+  const out = [];
+  for(let y = 0; y < img.height; y += step){
+    const h = Math.min(band, img.height - y);
+    if(h < band * 0.25 && out.length) break;                    // שארית זניחה
+    const c = document.createElement('canvas');
+    const sc = Math.min(1, API_MAX_EDGE / Math.max(img.width, h));
+    c.width = Math.round(img.width * sc); c.height = Math.round(h * sc);
+    c.getContext('2d').drawImage(img, 0, y, img.width, h, 0, 0, c.width, c.height);
+    out.push(c.toDataURL('image/jpeg', 0.9));
+    if(y + h >= img.height) break;
+  }
+  return out.length ? out : [dataUrl];
+}
+async function apiImages(){
+  const out = [];
+  for(const p of pickedPages) out.push(...await sliceTall(p));
+  return out.slice(0, 12);                                      // גבול הגיוני לעלות
+}
 async function extractViaApi(){
   const key = apiKey();
-  const multi = pickedPages.length > 1;
-  const content = pickedPages.map(p=>({
+  const imgs = await apiImages();
+  const multi = imgs.length > 1;
+  const content = imgs.map(p=>({
     type:'image', source:{type:'base64', media_type:'image/jpeg', data:p.split(',')[1]}
   }));
   content.push({type:'text', text: EXTRACT_PROMPT + (multi
-    ? `\n\nשים לב: מצורפות ${pickedPages.length} תמונות של **אותה חשבונית ארוכה**, לפי הסדר, עם חפיפה ביניהן. החזר רשימת מוצרים אחת מאוחדת: אל תכפיל שורות שמופיעות בשתי תמונות עוקבות. שים לב שמוצר שנקנה פעמיים באמת יופיע פעמיים באותה תמונה — אותו אל תמזג.`
+    ? `\n\nשים לב: מצורפות ${imgs.length} תמונות של **אותה חשבונית ארוכה**, לפי הסדר מלמעלה למטה, עם חפיפה של כ-15% בין תמונות עוקבות. החזר רשימת מוצרים אחת מאוחדת: אל תכפיל שורות שמופיעות בשתי תמונות עוקבות בגלל החפיפה. לעומת זאת, מוצר שנקנה באמת פעמיים יופיע פעמיים בתוך אותה תמונה — אותו אל תמזג.`
     : '')});
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
@@ -850,7 +878,7 @@ async function extractReceipt(){
       toast('הגעתם לתקרה החודשית — משתמש בזיהוי החינמי');
       res = await extractViaOcr(st); via = 'ocr-cap';
     } else if(key){
-      st.textContent = 'שולח את החשבונית לזיהוי מדויק...';
+      st.textContent = 'מכין ושולח את החשבונית לזיהוי מדויק...';
       try{ res = await extractViaApi(); via = 'api'; lastApiError = ''; }
       catch(e){
         // TypeError = הבקשה לא יצאה כלל (רשת/חסימה), ולא תשובה שגויה מהשרת
