@@ -1282,12 +1282,28 @@ function renderSettings(){
 /* תו נסתר אחד במפתח (רווח, שורה חדשה, מקף "חכם" מהעתקה בנייד)
    גורם ל-fetch לזרוק TypeError עוד לפני שהבקשה יוצאת. לכן מנקים בתקיפות. */
 function sanitizeKey(raw){
-  return String(raw).replace(/[​-‍﻿]/g,'').replace(/\s+/g,'').trim();
+  return String(raw)
+    .replace(/[​-‍﻿]/g,'')      // תווים בלתי נראים
+    .replace(/[‐‑‒–—−]/g,'-')      // מקפים "חכמים" מתיקון אוטומטי
+    .replace(/\s+/g,'').trim();
+}
+/* מחזיר הסבר מדויק למה המפתח פסול, במקום "לא תקין" גנרי */
+function keyProblem(k){
+  if(!k) return 'לא הודבק מפתח.';
+  if(!/^sk-ant-/.test(k)) return 'מפתח תקין מתחיל ב-sk-ant- — נראה שהועתק טקסט אחר.';
+  if(/[.…]/.test(k)) return 'המפתח מכיל נקודות — כנראה הועתקה התצוגה המקוצרת מרשימת המפתחות (sk-ant-api03-V3L..). את המפתח המלא רואים רק פעם אחת, ברגע היצירה. צרו מפתח חדש והעתיקו עם כפתור Copy.';
+  const bad = [...new Set((k.match(/[^A-Za-z0-9_\-]/g)||[]))];
+  if(bad.length) return `המפתח מכיל תווים לא חוקיים: ${bad.map(c=>JSON.stringify(c)).join(', ')} — צרו מפתח חדש והעתיקו עם כפתור Copy.`;
+  if(k.length < 40) return `המפתח קצר מדי (${k.length} תווים) — כנראה הועתק חלקית. צרו מפתח חדש והעתיקו עם כפתור Copy.`;
+  return '';
 }
 function saveKey(){
   const k = sanitizeKey($('keyInput').value);
-  if(!/^sk-ant-[A-Za-z0-9_\-]+$/.test(k)){
-    toast(/^sk-ant-/.test(k) ? 'המפתח מכיל תווים לא חוקיים — העתיקו שוב' : 'מפתח לא תקין (מתחיל ב-sk-ant-)');
+  const prob = keyProblem(k);
+  if(prob){
+    $('keyTest').style.display='block';
+    $('keyTest').innerHTML = `<b style="color:var(--red)">❌ ${esc(prob)}</b>`;
+    toast('המפתח לא נשמר');
     return;
   }
   localStorage.setItem(LS.apikey, k);
@@ -1302,8 +1318,10 @@ async function testApiKey(){
   if(!key){ el.textContent = 'אין מפתח שמור.'; return; }
   el.style.display='block';
   el.innerHTML = '🔄 בודק חיבור...';
-  if(!/^sk-ant-[A-Za-z0-9_\-]+$/.test(key)){
-    el.innerHTML = '<b style="color:var(--red)">❌ המפתח השמור מכיל תווים לא חוקיים. הסירו והדביקו מחדש.</b>';
+  const prob = keyProblem(key);
+  if(prob){
+    el.innerHTML = `<b style="color:var(--red)">❌ ${esc(prob)}</b>`
+      + `<div class="muted" style="margin-top:4px">המפתח השמור: <code>${esc(key.slice(0,14))}…${esc(key.slice(-4))}</code> (${key.length} תווים)</div>`;
     return;
   }
   try{
