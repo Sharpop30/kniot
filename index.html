@@ -510,7 +510,12 @@ async function onReceiptPick(inp){
     $('pagesInfo').style.display = pickedPages.length>1 ? 'block' : 'none';
     $('pagesInfo').innerHTML = `📎 ${pickedPages.length} חלקים. צלמו עם חפיפה קלה — המערכת תזהה ותסיר שורות כפולות. <button class="danger" style="padding:2px 6px" onclick="clearPages()">איפוס</button>`;
     $('ocrBtn').style.display = 'block';
-  }catch(e){ console.error(e); toast('שגיאה בעיבוד הקובץ'); $('rcptLbl').textContent='צילום / העלאת חשבונית (תמונה או PDF)'; }
+  }catch(e){
+    console.error(e);
+    $('pagesInfo').style.display='block';
+    $('pagesInfo').innerHTML = `<b style="color:var(--red)">❌ ${esc(e.message||'שגיאה בעיבוד הקובץ')}</b>`;
+    $('rcptLbl').textContent='צילום / העלאת חשבונית (תמונה או PDF)';
+  }
   inp.value='';
 }
 function clearPages(){
@@ -534,16 +539,27 @@ async function stitchImages(urls){
 function loadImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('decode')); im.src=src; }); }
 /* תמונות מאייפון הן HEIC — חלק מהדפדפנים לא מפענחים אותן. ננסה נטיבית, ואם נכשל נמיר. */
 function isHeic(f){ return /hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name||''); }
+let heicToMod = null;
+async function convertHeic(f){
+  // heic2any נכשל על HEIC של אייפונים חדשים (ERR_LIBHEIF format not supported);
+  // heic-to משתמש ב-libheif עדכני ומפענח אותם.
+  if(!heicToMod) heicToMod = await import('https://cdn.jsdelivr.net/npm/heic-to@1.2.0/+esm');
+  return await heicToMod.heicTo({blob:f, type:'image/jpeg', quality:0.9});
+}
 async function imageFileToDataUrl(f){
   const url = URL.createObjectURL(f);
   try{
     return await resizeDataUrl(url, 2000, 0.85);
   }catch(e){
     URL.revokeObjectURL(url);
-    if(!isHeic(f)) throw e;
+    if(!isHeic(f)) throw new Error('הדפדפן לא הצליח לפתוח את התמונה (' + (f.type||'ללא סוג') + ')');
     $('rcptLbl').textContent = 'ממיר תמונת אייפון (HEIC)...';
-    if(!window.heic2any) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js');
-    const blob = await heic2any({blob:f, toType:'image/jpeg', quality:0.9});
+    let blob;
+    try{ blob = await convertHeic(f); }
+    catch(err){
+      console.error('HEIC convert failed', err);
+      throw new Error('לא הצלחתי להמיר את קובץ ה-HEIC. פתרון מהיר: שלחו לעצמכם את התמונה בוואטסאפ (ההמרה ל-JPG אוטומטית), או בהגדרות האייפון: מצלמה ← פורמטים ← "תואם ביותר".');
+    }
     const u2 = URL.createObjectURL(Array.isArray(blob)?blob[0]:blob);
     return await resizeDataUrl(u2, 2000, 0.85);
   }
