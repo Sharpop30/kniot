@@ -1,19 +1,20 @@
 /* service worker — הקניות שלנו */
-const CACHE = 'kniot-v11';
-const CDN_CACHE = 'kniot-cdn-v1';
+const CACHE = 'kniot-v13';
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png']))
+    caches.open(CACHE)
+      .then(c => c.addAll(['./', './index.html', './manifest.webmanifest',
+                           './icon-192.png', './apple-touch-icon.png']))
       .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(ks => Promise.all(
-      ks.filter(k => k !== CACHE && k !== CDN_CACHE).map(k => caches.delete(k))
-    )).then(() => self.clients.claim())
+    caches.keys()
+      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
@@ -34,18 +35,6 @@ self.addEventListener('fetch', e => {
       }).catch(() =>
         caches.match(e.request).then(r => r || caches.match('./index.html'))
       )
-    );
-    return;
-  }
-
-  // ספריות CDN (OCR, PDF) — cache קודם, הן לא משתנות
-  if (/cdnjs\.cloudflare\.com|jsdelivr\.net|tessdata/.test(u.host)) {
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CDN_CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }))
     );
   }
 });
