@@ -168,7 +168,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 
 <div id="addRow">
   <input id="newItem" placeholder="מה להוסיף?" list="catalogDl" autocomplete="off"
-         autocorrect="off" enterkeyhint="done">
+         autocorrect="off" autocapitalize="off" enterkeyhint="next">
 </div>
 <datalist id="catalogDl"></datalist>
 
@@ -239,7 +239,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-19';
+const VERSION      = '2026-09-19b';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -464,6 +464,15 @@ function esc(s){ return String(s).replace(/[&<>"']/g, c =>
 const SVG_BUY  = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><path d="M8 13.4l3.4 3.3L18 9.8"/></svg>';
 const SVG_SKIP = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><line x1="9.2" y1="9.2" x2="16.8" y2="16.8"/><line x1="16.8" y1="9.2" x2="9.2" y2="16.8"/></svg>';
 
+/* רשימת ההשלמה נבנית רק כשפותחים את שדה ההוספה. בנייתה בכל הוספה
+   הפילה את חלונית ההשלמה של iOS באמצע ההקלדה. */
+function fillCatalogList(){
+  const c = state.catalog || {};
+  $('catalogDl').innerHTML = Object.keys(c)
+    .sort((a, b) => (c[b].count||0) - (c[a].count||0) || (c[b].last||0) - (c[a].last||0))
+    .slice(0, 120).map(n => `<option value="${esc(n)}">`).join('');
+}
+
 function tagFor(i){
   if(i.done) return '<i class="tag">נקנה</i>';
   if(i.skip) return '<i class="tag">חסר</i>';
@@ -493,17 +502,18 @@ function render(){
       </div>`;
     }).join('');
   }
-  $('catalogDl').innerHTML = Object.keys(state.catalog)
-    .sort((a,b) => (state.catalog[b].count||0) - (state.catalog[a].count||0))
-    .slice(0,120).map(n => `<option value="${esc(n)}">`).join('');
   paintUndo();
 }
 
 /* ================= הוספה ================= */
+/* ＋ אף פעם לא סוגר את שדה ההוספה. אם כבר כתוב בו משהו — הוא מוסיף אותו.
+   אחרת הוא פותח וממקד. סגירה קורית מעצמה כשעוזבים את השדה ריק. */
 function toggleAdd(){
-  const r = $('addRow');
-  const open = r.classList.toggle('show');
-  if(open) $('newItem').focus(); else $('newItem').blur();
+  const inp = $('newItem');
+  if($('addRow').classList.contains('show') && inp.value.trim()){ addFromInput(); return; }
+  $('addRow').classList.add('show');
+  fillCatalogList();
+  inp.focus();
 }
 $('newItem').addEventListener('keydown', e => { if(e.key === 'Enter') addFromInput(); });
 $('newItem').addEventListener('blur', () => {
@@ -811,6 +821,7 @@ applyTheme();
 loadLocal();
 render();
 if(!activeItems().length) $('addRow').classList.add('show');
+fillCatalogList();
 setSync('');
 if(token) doSync();
 if('serviceWorker' in navigator && location.protocol === 'https:')
