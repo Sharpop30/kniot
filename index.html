@@ -68,6 +68,8 @@ h1{flex:1;text-align:center;margin:0;font-size:1.32rem;font-weight:700;letter-sp
 h1 span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dot{width:7px;height:7px;min-width:7px;border-radius:50%;background:var(--faint);display:inline-block}
 .dot.ok{background:#34c759}.dot.err{background:#ff453a}.dot.busy{background:#ffb02e;animation:pulse 1.1s infinite}
+/* אין רשת — לא תקלה. השינויים שמורים וממתינים, ולכן אפור ולא אדום. */
+.dot.wait{background:transparent;box-shadow:inset 0 0 0 1.5px var(--muted)}
 .dot.none{display:none}
 @keyframes pulse{50%{opacity:.35}}
 .side{display:flex;align-items:center;gap:6px}
@@ -239,7 +241,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-19c';
+const VERSION      = '2026-09-19d';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -252,7 +254,7 @@ const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'
 let state = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, lineMap:{}, v:1};
 let token = localStorage.getItem(LS.token) || '';
 let gistId = localStorage.getItem(LS.gist) || '';
-let pushTimer = null, syncing = false;
+let pushTimer = null, pollTimer = null, syncing = false, lastSyncAt = 0;
 let undoStack = [];
 let dirty = new Set();   // פריטים ששיניתי כאן וטרם נדחפו לענן
 
@@ -684,7 +686,7 @@ function closeSettings(){ $('setOverlay').classList.remove('show'); }
 function renderSettings(){
   $('setDisconnected').style.display = token ? 'none' : 'block';
   $('setConnected').style.display = token ? 'block' : 'none';
-  if(token) $('syncState').textContent = gistId ? 'מחובר · הרשימה משותפת.' : 'מחובר.';
+  if(token) $('syncState').textContent = syncSummary();
   /* מספר הגרסה עונה על "האם הטלפון כבר קיבל את העדכון, או שזה מטמון ישן" */
   $('verNum').textContent = VERSION;
   const n = activeItems().length;
@@ -715,12 +717,30 @@ $('toast').addEventListener('click', () => {
 function setSync(cls){
   const d = $('syncDot');
   d.className = 'dot ' + (token ? cls : 'none');
+  d.title = {ok:'מסונכרן', busy:'מסנכרן...', wait:'אין רשת — ממתין', err:'שגיאת סנכרון'}[cls] || '';
+}
+/* שורת מצב קריאה בהגדרות, במקום לפענח צבע של נקודה */
+function syncSummary(){
+  if(!token) return 'לא מחובר.';
+  const pend = dirty.size;
+  if(!navigator.onLine) return 'אין רשת' + (pend ? ' · ' + pend + ' שינויים ממתינים להעלאה.' : ' · הכל שמור במכשיר.');
+  if(!lastSyncAt) return 'מחובר · טרם סונכרן בפתיחה הזו.';
+  const mins = Math.round((now() - lastSyncAt) / 60000);
+  const when = mins < 1 ? 'זה עתה' : mins === 1 ? 'לפני דקה' : 'לפני ' + mins + ' דקות';
+  return 'מסונכרן ' + when + (pend ? ' · ' + pend + ' ממתינים' : '') + '.';
 }
 async function api(path, opts={}){
-  const r = await fetch('https://api.github.com' + path, {
-    ...opts,
-    headers:{'Authorization':'Bearer ' + token, 'Accept':'application/vnd.github+json', ...(opts.headers||{})}
-  });
+  let r;
+  try{
+    r = await fetch('https://api.github.com' + path, {
+      ...opts,
+      headers:{'Authorization':'Bearer ' + token, 'Accept':'application/vnd.github+json', ...(opts.headers||{})}
+    });
+  }catch(e){
+    /* מסמנים במפורש שהבקשה לא יצאה לדרך, במקום לנחש לפי סוג החריגה.
+       באג תכנותי זורק גם הוא TypeError, והוא בהחלט כן תקלה. */
+    const err = new Error('network'); err.netFail = true; throw err;
+  }
   if(!r.ok) throw new Error('GitHub ' + r.status);
   return r.json();
 }
@@ -746,12 +766,16 @@ async function fetchRemote(){
   const f = g.files[DATA_FILE];
   if(!f) return null;
   let content = f.content;
-  if(f.truncated) content = await (await fetch(f.raw_url)).text();
+  if(f.truncated){
+    try{ content = await (await fetch(f.raw_url)).text(); }
+    catch(e){ const err = new Error('network'); err.netFail = true; throw err; }
+  }
   try{ return JSON.parse(content); }catch(e){ return null; }
 }
-async function doSync(){
+async function doSync(quiet){
   if(!token || syncing) return;
-  syncing = true; setSync('busy');
+  syncing = true;
+  if(!quiet) setSync('busy');   // רענון רקע לא מהבהב על המסך כל חצי דקה
   try{
     if(!gistId) await ensureGist();
     let remote = null;
@@ -790,11 +814,25 @@ async function doSync(){
       if(archiving) localStorage.setItem(LS.archived, '1');
     }
     saveLocal();
+    lastSyncAt = now();
     setSync('ok');
   }catch(e){
     console.error(e);
-    setSync('err');
+    /* אין רשת זו לא תקלה — הכל שמור מקומית ויעלה כשהחיבור יחזור.
+       רק כשל אמיתי מהשרת (טוקן פג, גיסט נמחק) ראוי לאדום. */
+    setSync((!navigator.onLine || e.netFail === true) ? 'wait' : 'err');
   }finally{ syncing = false; }
+}
+
+/* רענון אוטומטי כל חצי דקה כשהאפליקציה פתוחה לפנינו — כדי לראות
+   שינויים מהטלפון השני בלי לצאת ולחזור. */
+function startPolling(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(() => {
+    if(!token || document.hidden || syncing) return;
+    if(drag || document.querySelector('.edit')) return;   // לא באמצע גרירה או עריכה
+    doSync(true);
+  }, 30000);
 }
 function schedulePush(){
   if(!token) return;
@@ -809,6 +847,7 @@ async function connect(){
     await api('/user');
     localStorage.setItem(LS.token, token);
     await doSync();
+    startPolling();
     $('tokenInput').value = '';
     renderSettings();
     toast('מחובר — הרשימה משותפת');
@@ -852,6 +891,7 @@ function wipe(){
 
 /* ================= init ================= */
 window.addEventListener('online', () => { if(token) doSync(); });
+window.addEventListener('offline', () => { if(token) setSync('wait'); });
 document.addEventListener('visibilitychange', () => { if(!document.hidden && token) doSync(); });
 
 applyTheme();
@@ -859,8 +899,8 @@ loadLocal();
 render();
 if(!activeItems().length) $('addRow').classList.add('show');
 fillCatalogList();
-setSync('');
-if(token) doSync();
+setSync(navigator.onLine ? '' : 'wait');
+if(token){ doSync(); startPolling(); }
 if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 </script>
