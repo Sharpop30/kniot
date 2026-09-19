@@ -167,7 +167,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 </header>
 
 <div id="addRow">
-  <input id="newItem" placeholder="מה להוסיף?" list="catalogDl" autocomplete="off"
+  <input id="newItem" placeholder="מה להוסיף? אפשר כמה, בפסיקים" list="catalogDl" autocomplete="off"
          autocorrect="off" autocapitalize="off" enterkeyhint="next">
 </div>
 <datalist id="catalogDl"></datalist>
@@ -239,7 +239,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-19b';
+const VERSION      = '2026-09-19c';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -399,12 +399,35 @@ function addItem(name){
   bumpCatalog(name);
   afterChange();
 }
+/* מדביקים "חלב, לחם, ביצים" ומקבלים שלושה פריטים.
+   מפרידים: פסיק, נקודה-פסיק או ירידת שורה. */
+function splitNames(raw){
+  return (raw || '').split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+}
 function addFromInput(){
-  const v = $('newItem').value;
-  if(!v.trim()) return;
-  addItem(v);
+  const names = splitNames($('newItem').value);
+  if(!names.length) return;
+  if(names.length === 1) addItem(names[0]);
+  else addMany(names);
   $('newItem').value = '';
   $('newItem').focus();
+}
+function addMany(names){
+  snapshot();
+  let added = 0, dup = 0;
+  for(const raw of names){
+    const name = canon(raw);
+    if(!name) continue;
+    const ex = state.items.find(i => !i.deleted && i.name === name);
+    if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); dup++; }
+    else {
+      const it = {id:uid(), name, qty:1, done:false, skip:false, updatedAt:now()};
+      state.items.push(it); dirty.add(it.id); added++;
+    }
+    bumpCatalog(name);
+  }
+  afterChange();
+  toast('נוספו ' + added + ' פריטים' + (dup ? ' · ' + dup + ' כבר היו ברשימה' : ''), true);
 }
 function toggleBuy(id){
   const it = byId(id); if(!it) return;
@@ -516,6 +539,20 @@ function toggleAdd(){
   inp.focus();
 }
 $('newItem').addEventListener('keydown', e => { if(e.key === 'Enter') addFromInput(); });
+
+/* הדבקה של רשימה שלמה (למשל מוואטסאפ). חייבים לתפוס את זה כאן:
+   שדה חד-שורתי הופך ירידות שורה לרווחים לפני שהערך מגיע לקוד. */
+$('newItem').addEventListener('paste', e => {
+  const cd = e.clipboardData || window.clipboardData;
+  const txt = cd ? (cd.getData('text') || '') : '';
+  if(!/[,;\n\r]/.test(txt)) return;            // פריט בודד — התנהגות רגילה
+  e.preventDefault();
+  const names = splitNames($('newItem').value + '\n' + txt);
+  if(!names.length) return;
+  if(names.length === 1) addItem(names[0]); else addMany(names);
+  $('newItem').value = '';
+  $('newItem').focus();
+});
 $('newItem').addEventListener('blur', () => {
   if(!$('newItem').value.trim() && activeItems().length) $('addRow').classList.remove('show');
 });
@@ -824,7 +861,7 @@ if(!activeItems().length) $('addRow').classList.add('show');
 fillCatalogList();
 setSync('');
 if(token) doSync();
-if('serviceWorker' in navigator && location.protocol === 'https:')
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 </script>
 </body>
