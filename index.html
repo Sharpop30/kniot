@@ -62,7 +62,7 @@ header{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;
   display:flex;align-items:center;justify-content:center;font-size:1.5rem;line-height:1;color:var(--text)}
 .circle:active{background:var(--btn-press)}
 .circle.off{color:var(--faint)}
-#undoBtn{font-size:1.35rem}
+#roundBtn{font-size:1.35rem}
 h1{flex:1;text-align:center;margin:0;font-size:1.32rem;font-weight:700;letter-spacing:-.01em;
   display:flex;align-items:center;justify-content:center;gap:7px;min-width:0}
 h1 span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -86,17 +86,28 @@ h1 span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .item{position:relative;overflow:hidden;border-top:1px solid var(--line)}
 .item:last-of-type{border-bottom:1px solid var(--line)}
-.del{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;
+/* שכבת המחיקה קיימת רק בזמן גרירה — אחרת קצה אדום מהבהב בזמן גלילה באייפון */
+.del{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-start;
   padding:0 22px;background:var(--danger);color:#fff;font-size:.95rem;font-weight:600}
+.item.swiping .del{display:flex}
 .surface{position:relative;display:flex;align-items:center;gap:6px;padding:16px;background:var(--bg);
-  touch-action:pan-y;will-change:transform}
+  touch-action:pan-y;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.edit{width:100%;font:inherit;font-size:1.18rem;font-weight:600;color:var(--text);
+  background:var(--field);border:none;border-radius:9px;padding:7px 11px;outline:none;
+  -webkit-user-select:text;user-select:text}
+.item.holding .surface{background:var(--btn)}
+.item.swiping .surface{will-change:transform}
 .surface.snap{transition:transform .22s cubic-bezier(.2,.8,.3,1)}
 .name{flex:1;font-size:1.22rem;font-weight:600;line-height:1.3;word-break:break-word;min-width:0}
-.item.done .name{text-decoration:line-through;color:var(--faint);font-weight:500}
+.item.done .name{color:var(--faint);font-weight:500}
+.item.done .txt{text-decoration:line-through}
 .item.skip .name{color:var(--faint);font-weight:500}
-.mark{width:34px;height:34px;min-width:34px;border-radius:50%;background:none;border:none;padding:0;
+.tag{font-style:normal;font-size:.7rem;font-weight:700;color:var(--faint);
+  margin-inline-start:9px;letter-spacing:.03em;white-space:nowrap;vertical-align:2px}
+.mark{width:44px;height:44px;min-width:44px;border-radius:50%;background:none;border:none;padding:0;
   display:flex;align-items:center;justify-content:center}
-.mark svg{width:26px;height:26px;display:block}
+.mark svg{width:26px;height:26px;display:block;transition:opacity .12s}
+.mark:active svg{opacity:.45}
 .mark circle,.mark line{stroke:var(--muted);stroke-width:1.9;fill:none;stroke-linecap:round}
 .mark path{fill:none;stroke:none}
 .item.done .buy circle{fill:var(--text);stroke:var(--text)}
@@ -135,10 +146,13 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .btn.sub{background:var(--field);color:var(--text);font-weight:500}
 .btn.red{background:none;color:var(--danger);font-weight:500}
 .rowb{display:flex;gap:8px}
+.ver{text-align:center;color:var(--faint);font-size:.75rem;margin:14px 0 0;direction:rtl}
 .toast{position:fixed;bottom:36px;right:50%;transform:translateX(50%);background:var(--text);color:var(--bg);
   padding:11px 20px;border-radius:24px;font-size:.9rem;z-index:60;opacity:0;transition:opacity .25s;
   pointer-events:none;white-space:nowrap;font-weight:500}
 .toast.show{opacity:1}
+.toast.act{pointer-events:auto}
+.tundo{margin-inline-start:14px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 </style>
 </head>
 <body>
@@ -147,7 +161,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   <button class="circle" id="addBtn" onclick="toggleAdd()" aria-label="הוספת פריט">＋</button>
   <h1><span class="t" id="titleTxt">הקניות שלנו</span><span class="dot none" id="syncDot"></span></h1>
   <div class="side">
-    <button class="circle off" id="undoBtn" onclick="undo()" aria-label="ביטול הפעולה האחרונה">↺</button>
+      <button class="circle off" id="roundBtn" onclick="newRound()" aria-label="סבב חדש — ניקוי כל הסימונים">↺</button>
     <button class="gear" onclick="openSettings()" aria-label="הגדרות">⚙</button>
   </div>
 </header>
@@ -162,7 +176,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   <div id="itemsWrap"></div>
   <p class="hint">
     <span class="g">הקישו ○ כשקניתם</span> · <span class="g">⊗ אם אין במלאי</span> ·
-    <span class="g">גררו שמאלה למחיקה</span>
+    <span class="g">גררו שמאלה למחיקה</span> · <span class="g">לחיצה ארוכה על השם לעריכה</span>
   </p>
 </main>
 
@@ -215,6 +229,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
     </div>
 
     <button class="btn sub" onclick="closeSettings()">סגירה</button>
+    <p class="ver">גרסה <span id="verNum"></span> · <span id="verInfo"></span></p>
   </div>
 </div>
 
@@ -224,8 +239,11 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const DATA_FILE = 'kniot-data.json';
-const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme',
+const VERSION      = '2026-09-19';
+const DATA_FILE    = 'kniot-data.json';
+const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
+const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
+            archived:'kniot_archived',
             rcpts:'kniot_receipts', pend:'kniot_pending', apikey:'kniot_apikey',
             usage:'kniot_usage', capUsd:'kniot_cap_usd'};
 
@@ -236,6 +254,7 @@ let token = localStorage.getItem(LS.token) || '';
 let gistId = localStorage.getItem(LS.gist) || '';
 let pushTimer = null, syncing = false;
 let undoStack = [];
+let dirty = new Set();   // פריטים ששיניתי כאן וטרם נדחפו לענן
 
 const now = () => Date.now();
 const uid = () => now().toString(36) + Math.random().toString(36).slice(2,7);
@@ -249,16 +268,28 @@ function loadLocal(){
   state.aliases = state.aliases || {};
   state.lineMap = state.lineMap || {};
   state.stores = state.stores || [];
+  /* dirty שורד סגירה של האפליקציה: סימנת פריטים בסופר בלי רשת,
+     iOS סגר את האפליקציה — השינויים עדיין חייבים לנצח בסנכרון הבא. */
+  try{ dirty = new Set(JSON.parse(localStorage.getItem(LS.dirty)) || []); }catch(e){}
+  pruneCatalog();
 }
 function saveLocal(){
-  try{ localStorage.setItem(LS.state, JSON.stringify(state)); }catch(e){}
+  try{
+    localStorage.setItem(LS.state, JSON.stringify(state));
+    localStorage.setItem(LS.dirty, JSON.stringify([...dirty]));
+  }catch(e){}
 }
 
 /* ================= merge (שני טלפונים) ================= */
-function mergeStates(a, b){
+/* mine = מזהים ששיניתי כאן ועדיין לא נדחפו לענן. הם תמיד מנצחים,
+   גם אם שעון הטלפון השני מקדים — אחרת סימון "נקנה" מתהפך חזרה אחרי הסנכרון. */
+function mergeStates(a, b, mine){
   const out = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, lineMap:{}, v:1};
   const byId = {};
+  const local = {};
+  for(const it of (a.items||[])) local[it.id] = it;
   for(const it of [...(a.items||[]), ...(b.items||[])]){
+    if(mine && mine.has(it.id)){ byId[it.id] = local[it.id] || it; continue; }
     const ex = byId[it.id];
     if(!ex || (it.updatedAt||0) > (ex.updatedAt||0)) byId[it.id] = it;
   }
@@ -280,6 +311,27 @@ function mergeStates(a, b){
   out.lineMap = {...(a.lineMap||{}), ...(b.lineMap||{})};
   return out;
 }
+/* מה שנוסע לענן בכל שינוי: הכל חוץ מהיסטוריית הקניות הישנה.
+   היא נשמרת מקומית ומגובה פעם אחת לקובץ ארכיון נפרד בגיסט. */
+function syncPayload(){
+  const out = {};
+  for(const k of Object.keys(state)) if(k !== 'purchases') out[k] = state[k];
+  out.purchases = [];
+  return JSON.stringify(out);
+}
+
+/* הקטלוג (שמות להשלמה אוטומטית) גדל בלי גבול ונוסע בכל סנכרון.
+   שומרים את הנפוצים, ותמיד את מה שנמצא ברשימה כרגע. */
+function pruneCatalog(max = 300){
+  const keys = Object.keys(state.catalog || {});
+  if(keys.length <= max) return;
+  const c = state.catalog;
+  keys.sort((a, b) => (c[b].count||0) - (c[a].count||0) || (c[b].last||0) - (c[a].last||0));
+  const keep = new Set(keys.slice(0, max));
+  for(const i of state.items) if(!i.deleted) keep.add(i.name);
+  for(const k of keys) if(!keep.has(k)) delete c[k];
+}
+
 function canon(n){
   let s = n, guard = 0;
   const al = state.aliases || {};
@@ -293,7 +345,23 @@ function snapshot(){
   if(undoStack.length > 40) undoStack.shift();
   paintUndo();
 }
-function paintUndo(){ $('undoBtn').classList.toggle('off', undoStack.length === 0); }
+/* ↺ = סבב קניות חדש: מנקה את כל הסימונים ומשאיר את הרשימה עצמה,
+   כדי שאפשר יהיה לקנות שוב את אותם מוצרים בלי להקליד אותם מחדש. */
+function newRound(){
+  const marked = activeItems().filter(i => i.done || i.skip);
+  if(!marked.length){ toast('אין סימונים לנקות'); return; }
+  snapshot();
+  for(const it of marked){
+    it.done = false; it.skip = false; it.updatedAt = now();
+    dirty.add(it.id);
+  }
+  afterChange();
+  toast('סבב חדש · ' + marked.length + ' סימונים נוקו', true);
+}
+function paintUndo(){
+  const marked = activeItems().some(i => i.done || i.skip);
+  $('roundBtn').classList.toggle('off', !marked);
+}
 function undo(){
   const snap = undoStack.pop();
   if(!snap){ toast('אין מה לבטל'); return; }
@@ -307,6 +375,7 @@ function undo(){
   const ids = new Set(out.map(i => i.id));
   for(const c of state.items) if(!ids.has(c.id)) out.push({...c, deleted:true, updatedAt:now()});
   state.items = out;
+  out.forEach(i => dirty.add(i.id));
   paintUndo(); saveLocal(); render(); schedulePush();
   toast('בוטל');
 }
@@ -315,14 +384,18 @@ function undo(){
 function bumpCatalog(name){
   const c = state.catalog[name] || {count:0, last:0};
   c.count++; c.last = now(); state.catalog[name] = c;
+  pruneCatalog();
 }
 function addItem(name){
   name = canon((name||'').trim());
   if(!name) return;
   snapshot();
   const ex = state.items.find(i => !i.deleted && i.name === name);
-  if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); toast('כבר ברשימה'); }
-  else state.items.push({id:uid(), name, qty:1, done:false, skip:false, updatedAt:now()});
+  if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); toast('כבר ברשימה'); }
+  else {
+    const it = {id:uid(), name, qty:1, done:false, skip:false, updatedAt:now()};
+    state.items.push(it); dirty.add(it.id);
+  }
   bumpCatalog(name);
   afterChange();
 }
@@ -337,28 +410,51 @@ function toggleBuy(id){
   const it = byId(id); if(!it) return;
   snapshot();
   it.done = !it.done; if(it.done) it.skip = false;
-  it.updatedAt = now(); afterChange();
+  it.updatedAt = now(); afterTap(id);
 }
 function toggleSkip(id){
   const it = byId(id); if(!it) return;
   snapshot();
   it.skip = !it.skip; if(it.skip) it.done = false;
-  it.updatedAt = now(); afterChange();
+  it.updatedAt = now(); afterTap(id);
 }
 function chQty(id, d){
   const it = byId(id); if(!it) return;
   snapshot();
   it.qty = Math.max(1, (it.qty||1) + d);
-  it.updatedAt = now(); afterChange();
+  it.updatedAt = now(); afterTap(id);
 }
 function delItem(id){
   const it = byId(id); if(!it) return;
   snapshot();
-  it.deleted = true; it.updatedAt = now(); afterChange();
-  toast('נמחק · ↺ לביטול');
+  it.deleted = true; it.updatedAt = now();
+  dirty.add(id); afterChange();
+  toast('נמחק', true);
 }
 function byId(id){ return state.items.find(i => i.id === id); }
 function activeItems(){ return state.items.filter(i => !i.deleted); }
+
+/* סימון פריט = ציור מיידי של השורה עצמה, בלי לבנות מחדש את כל הרשימה
+   ובלי שהשורה תקפוץ ממקומה תוך כדי שהאצבע עליה. */
+function afterTap(id){
+  dirty.add(id);
+  paintItem(id);
+  saveLocal();
+  schedulePush();
+}
+function paintItem(id){
+  const it = byId(id);
+  const row = document.querySelector('.item[data-id="' + id + '"]');
+  if(!it || !row){ render(); return; }
+  row.classList.toggle('done', !!it.done);
+  row.classList.toggle('skip', !!it.skip);
+  const tag = row.querySelector('.tag');
+  if(tag) tag.remove();
+  row.querySelector('.name').insertAdjacentHTML('beforeend', tagFor(it));
+  const q = it.qty || 1;
+  row.querySelector('.qty b').textContent = q;
+  row.querySelector('.qty').classList.toggle('one', q === 1);
+}
 function afterChange(){ saveLocal(); render(); schedulePush(); }
 
 /* ================= תצוגה ================= */
@@ -367,6 +463,12 @@ function esc(s){ return String(s).replace(/[&<>"']/g, c =>
 
 const SVG_BUY  = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><path d="M8 13.4l3.4 3.3L18 9.8"/></svg>';
 const SVG_SKIP = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><line x1="9.2" y1="9.2" x2="16.8" y2="16.8"/><line x1="16.8" y1="9.2" x2="9.2" y2="16.8"/></svg>';
+
+function tagFor(i){
+  if(i.done) return '<i class="tag">נקנה</i>';
+  if(i.skip) return '<i class="tag">חסר</i>';
+  return '';
+}
 
 function render(){
   const rank = i => i.done ? 2 : (i.skip ? 1 : 0);
@@ -381,7 +483,7 @@ function render(){
       return `<div class="item ${i.done?'done':''} ${i.skip?'skip':''}" data-id="${i.id}">
         <div class="del">מחיקה</div>
         <div class="surface">
-          <span class="name">${esc(i.name)}</span>
+          <span class="name"><span class="txt">${esc(i.name)}</span>${tagFor(i)}</span>
           <span class="qty ${q===1?'one':''}">
             <button class="minus" data-act="minus" aria-label="פחות">−</button><b>${q}</b><button data-act="plus" aria-label="עוד">+</button>
           </span>
@@ -408,6 +510,43 @@ $('newItem').addEventListener('blur', () => {
   if(!$('newItem').value.trim() && activeItems().length) $('addRow').classList.remove('show');
 });
 
+/* ================= עריכת שם בלחיצה ארוכה ================= */
+const HOLD_MS = 500;
+let holdTimer = null;
+
+function cancelHold(){
+  clearTimeout(holdTimer); holdTimer = null;
+  document.querySelectorAll('.item.holding').forEach(r => r.classList.remove('holding'));
+}
+function startEdit(id){
+  const it = byId(id);
+  const row = document.querySelector('.item[data-id="' + id + '"]');
+  if(!it || !row || row.querySelector('.edit')) return;
+  const nameEl = row.querySelector('.name');
+  nameEl.innerHTML = '<input class="edit" type="text" enterkeyhint="done" value="' + esc(it.name) + '">';
+  const inp = nameEl.querySelector('.edit');
+  let closed = false;
+  const finish = save => {
+    if(closed) return; closed = true;
+    const v = (inp.value || '').trim();
+    if(save && v && v !== it.name){
+      snapshot();
+      it.name = canon(v); it.updatedAt = now();
+      bumpCatalog(it.name); dirty.add(id);
+      saveLocal(); schedulePush();
+      toast('השם עודכן');
+    }
+    render();
+  };
+  inp.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); }
+    else if(e.key === 'Escape'){ closed = true; render(); }
+  });
+  inp.addEventListener('blur', () => finish(true));
+  inp.focus();
+  try{ inp.setSelectionRange(0, inp.value.length); }catch(err){}
+}
+
 /* ================= הקשה + גרירה למחיקה ================= */
 let drag = null;
 const SWIPE_OUT = 90;
@@ -418,32 +557,48 @@ $('itemsWrap').addEventListener('pointerdown', e => {
   if(e.pointerType === 'mouse' && e.button !== 0) return;
   drag = {surf, row:surf.closest('.item'), x0:e.clientX, y0:e.clientY, dx:0, moved:false, lock:null, id:e.pointerId};
   surf.classList.remove('snap');
+  cancelHold();
+  if(e.target.closest('.name') && !e.target.closest('.edit')){
+    const row = drag.row;
+    row.classList.add('holding');
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      row.classList.remove('holding');
+      drag = null;                       // הלחיצה הפכה לעריכה, לא לגרירה
+      startEdit(row.dataset.id);
+    }, HOLD_MS);
+  }
 });
 $('itemsWrap').addEventListener('pointermove', e => {
   if(!drag || e.pointerId !== drag.id) return;
   const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+  if(holdTimer && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) cancelHold();   // זזה — לא לחיצה ארוכה
   if(!drag.lock){
-    if(Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-    drag.lock = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-    if(drag.lock === 'y'){ endDrag(false); return; }
+    /* סף רחב בכוונה: אצבע זזה תמיד קצת בהקשה רגילה, ואם זה ייחשב
+       לגרירה — ההקשה נבלעת והמשתמש לוחץ שוב ושוב בלי שקורה כלום. */
+    if(Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)){ endDrag(false); return; }
+    if(Math.abs(dx) < 12) return;
+    drag.lock = 'x';
+    drag.row.classList.add('swiping');
     try{ drag.surf.setPointerCapture(e.pointerId); }catch(err){}
   }
-  if(drag.lock !== 'x') return;
   drag.moved = true;
   drag.dx = Math.min(0, dx);                       // גרירה שמאלה בלבד
   drag.surf.style.transform = `translateX(${drag.dx}px)`;
 });
 function endDrag(apply){
+  cancelHold();
   if(!drag) return;
   const d = drag; drag = null;
   d.surf.classList.add('snap');
-  if(d.moved) d.surf.dataset.blockClick = '1';   // שלא ייחשב כהקשה
+  if(d.dx < -10) d.surf.dataset.blockClick = '1';   // גרירה אמיתית בלבד חוסמת את ההקשה
   if(apply && d.dx <= -SWIPE_OUT){
     d.surf.style.transform = 'translateX(-100%)';
     const id = d.row.dataset.id;
     setTimeout(() => delItem(id), 150);
   } else {
     d.surf.style.transform = '';
+    setTimeout(() => d.row.classList.remove('swiping'), 260);  // אחרי שהשורה חזרה למקומה
   }
 }
 $('itemsWrap').addEventListener('pointerup', () => endDrag(true));
@@ -455,7 +610,7 @@ $('itemsWrap').addEventListener('click', e => {
   if(surf && surf.dataset.blockClick === '1'){ surf.dataset.blockClick = '0'; return; }
   const id = row.dataset.id;
   const act = (e.target.closest('[data-act]') || {}).dataset;
-  if(!act){ toggleBuy(id); return; }          // הקשה על השם = קניתי
+  if(!act) return;                            // הקשה על גוף השורה לא עושה כלום
   if(act.act === 'buy')   toggleBuy(id);
   else if(act.act === 'skip')  toggleSkip(id);
   else if(act.act === 'plus')  chQty(id, 1);
@@ -483,15 +638,31 @@ function renderSettings(){
   $('setDisconnected').style.display = token ? 'none' : 'block';
   $('setConnected').style.display = token ? 'block' : 'none';
   if(token) $('syncState').textContent = gistId ? 'מחובר · הרשימה משותפת.' : 'מחובר.';
+  /* מספר הגרסה עונה על "האם הטלפון כבר קיבל את העדכון, או שזה מטמון ישן" */
+  $('verNum').textContent = VERSION;
+  const n = activeItems().length;
+  $('verInfo').textContent = n === 1 ? 'פריט אחד ברשימה' : n + ' פריטים ברשימה';
   applyTheme();
 }
 
 /* ================= הודעות ================= */
+/* הביטול חי בהודעה עצמה: הקשה על "בטל" מחזירה את הפעולה האחרונה.
+   כך ↺ פנוי לתפקיד שלו, ואין כפתור ביטול קבוע שתופס מקום במסך. */
 let toastTimer;
-function toast(msg){
-  const t = $('toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+function toast(msg, undoable){
+  const t = $('toast');
+  t.innerHTML = esc(msg) + (undoable ? '<b class="tundo">בטל</b>' : '');
+  t.classList.toggle('act', !!undoable);
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), undoable ? 5000 : 2000);
 }
+$('toast').addEventListener('click', () => {
+  const t = $('toast');
+  if(!t.classList.contains('act')) return;
+  t.classList.remove('show', 'act');
+  undo();
+});
 
 /* ================= סנכרון GitHub Gist ================= */
 function setSync(cls){
@@ -516,7 +687,7 @@ async function ensureGist(){
   else {
     const g = await api('/gists', {method:'POST', body:JSON.stringify({
       description:'רשימת קניות משותפת (kniot app)', public:false,
-      files:{[DATA_FILE]:{content:JSON.stringify(state)}}
+      files:{[DATA_FILE]:{content:syncPayload()}}
     })});
     gistId = g.id;
   }
@@ -535,13 +706,43 @@ async function doSync(){
   if(!token || syncing) return;
   syncing = true; setSync('busy');
   try{
-    await ensureGist();
-    const remote = await fetchRemote();
-    if(remote) state = mergeStates(state, remote);
-    await api('/gists/' + gistId, {method:'PATCH', body:JSON.stringify({
-      files:{[DATA_FILE]:{content:JSON.stringify(state)}}
-    })});
-    saveLocal(); render();
+    if(!gistId) await ensureGist();
+    let remote = null;
+    try{ remote = await fetchRemote(); }
+    catch(e){ gistId = ''; await ensureGist(); remote = await fetchRemote(); }
+
+    let needPush = dirty.size > 0;
+    if(remote){
+      const before = JSON.stringify(state.items);
+      const merged = mergeStates(state, remote, dirty);
+      state = merged;
+      /* מציירים מחדש רק אם הסנכרון באמת שינה משהו — אחרת הרשימה
+         נבנית מחדש מתחת לאצבע בכל כניסה לאפליקציה, וזה מרגיש תקוע. */
+      /* לא מציירים מחדש בזמן שהמשתמש עורך שם — זה היה מוחק לו את מה שהקליד */
+      if(JSON.stringify(state.items) !== before && !document.querySelector('.edit')) render();
+      if(syncPayload() !== JSON.stringify({...remote, purchases:[]})) needPush = true;
+    } else needPush = true;
+
+    /* פעם אחת בלבד: ההיסטוריה הישנה יורדת לקובץ ארכיון נפרד בגיסט
+       ומפסיקה להישלח מחדש בכל שינוי קטן. מקומית היא נשארת. */
+    const files = {};
+    let archiving = false;
+    if(!localStorage.getItem(LS.archived)){
+      const ps = (state.purchases || []).filter(p => !p.deleted);
+      if(ps.length){
+        files[ARCHIVE_FILE] = {content: JSON.stringify({archivedAt: now(), purchases: ps})};
+        archiving = true; needPush = true;
+      } else localStorage.setItem(LS.archived, '1');
+    }
+
+    if(needPush){
+      const pushed = new Set(dirty);
+      files[DATA_FILE] = {content: syncPayload()};
+      await api('/gists/' + gistId, {method:'PATCH', body:JSON.stringify({files})});
+      pushed.forEach(id => dirty.delete(id));
+      if(archiving) localStorage.setItem(LS.archived, '1');
+    }
+    saveLocal();
     setSync('ok');
   }catch(e){
     console.error(e);
