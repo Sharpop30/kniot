@@ -241,7 +241,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-19d';
+const VERSION      = '2026-09-20';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -270,6 +270,8 @@ function loadLocal(){
   state.aliases = state.aliases || {};
   state.lineMap = state.lineMap || {};
   state.stores = state.stores || [];
+  /* פריטים ותיקים מקבלים createdAt פעם אחת, כדי שהמיון יהיה יציב */
+  for(const i of state.items) if(!i.createdAt) i.createdAt = i.updatedAt || now();
   /* dirty שורד סגירה של האפליקציה: סימנת פריטים בסופר בלי רשת,
      iOS סגר את האפליקציה — השינויים עדיין חייבים לנצח בסנכרון הבא. */
   try{ dirty = new Set(JSON.parse(localStorage.getItem(LS.dirty)) || []); }catch(e){}
@@ -395,7 +397,7 @@ function addItem(name){
   const ex = state.items.find(i => !i.deleted && i.name === name);
   if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); toast('כבר ברשימה'); }
   else {
-    const it = {id:uid(), name, qty:1, done:false, skip:false, updatedAt:now()};
+    const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
     state.items.push(it); dirty.add(it.id);
   }
   bumpCatalog(name);
@@ -423,7 +425,7 @@ function addMany(names){
     const ex = state.items.find(i => !i.deleted && i.name === name);
     if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); dup++; }
     else {
-      const it = {id:uid(), name, qty:1, done:false, skip:false, updatedAt:now()};
+      const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
       state.items.push(it); dirty.add(it.id); added++;
     }
     bumpCatalog(name);
@@ -463,9 +465,38 @@ function activeItems(){ return state.items.filter(i => !i.deleted); }
    ובלי שהשורה תקפוץ ממקומה תוך כדי שהאצבע עליה. */
 function afterTap(id){
   dirty.add(id);
-  paintItem(id);
+  paintItem(id);          // הסימון מופיע מיד, במקום, בלי שהשורה תזוז
   saveLocal();
   schedulePush();
+  scheduleResort();       // והמעבר לתחתית קורה רגע אחרי, כשהאצבע כבר הורמה
+}
+
+/* ממיין מחדש רק אחרי שההקשות נגמרו, ומחליק את השורות למקומן החדש
+   במקום לקפוץ. הקשות רצופות מאפסות את הטיימר — מיון אחד בסוף. */
+let resortTimer = null;
+function scheduleResort(){
+  clearTimeout(resortTimer);
+  resortTimer = setTimeout(renderSorted, 450);
+}
+function renderSorted(){
+  if(drag || document.querySelector('.edit')) return;
+  const wrap = $('itemsWrap');
+  const before = new Map();
+  wrap.querySelectorAll('.item').forEach(r => before.set(r.dataset.id, r.getBoundingClientRect().top));
+  render();
+  wrap.querySelectorAll('.item').forEach(r => {
+    const y0 = before.get(r.dataset.id);
+    if(y0 == null) return;
+    const dy = y0 - r.getBoundingClientRect().top;
+    if(!dy) return;
+    r.style.transition = 'none';
+    r.style.transform = 'translateY(' + dy + 'px)';
+    requestAnimationFrame(() => {
+      r.style.transition = 'transform .3s cubic-bezier(.2,.8,.3,1)';
+      r.style.transform = '';
+      setTimeout(() => { r.style.transition = ''; r.style.transform = ''; }, 340);
+    });
+  });
 }
 function paintItem(id){
   const it = byId(id);
@@ -504,9 +535,13 @@ function tagFor(i){
   return '';
 }
 
+/* סדר הרשימה: מה שעוד לא נקנה למעלה, אחריו החסרים, ובתחתית מה שנקנה.
+   בתוך כל קבוצה — החדש ביותר ראשון, לפי createdAt שלא משתנה לעולם,
+   כך ששינוי כמות או עריכת שם לא מזיזים פריט ממקומו. */
 function render(){
   const rank = i => i.done ? 2 : (i.skip ? 1 : 0);
-  const items = activeItems().sort((a,b) => rank(a)-rank(b) || (b.updatedAt||0)-(a.updatedAt||0));
+  const born = i => i.createdAt || i.updatedAt || 0;
+  const items = activeItems().sort((a,b) => rank(a)-rank(b) || born(b)-born(a));
   const w = $('itemsWrap');
 
   if(items.length === 0){
