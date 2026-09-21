@@ -83,6 +83,16 @@ h1 span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #newItem{width:100%;border:none;border-radius:13px;background:var(--field);color:var(--text);
   padding:14px 16px;font:inherit;font-size:1.05rem;outline:none}
 #newItem::placeholder{color:var(--faint)}
+.addwrap{position:relative}
+.addwrap #newItem{padding-left:50px}
+#clearQ{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:30px;height:30px;
+  border-radius:50%;border:none;background:var(--btn-press);color:var(--muted);font-size:.8rem;
+  line-height:30px;text-align:center;padding:0}
+#clearQ[hidden]{display:none}
+/* פריט שנוסף או חזר לרשימה מהבהב לרגע, כדי שיהיה ברור איפה הוא נחת */
+@keyframes flashrow{0%,35%{background:var(--btn-press)}100%{background:var(--bg)}}
+.item.flash .surface{animation:flashrow 1.4s ease-out}
+.empty small{display:block;margin-top:6px;font-size:.85rem;color:var(--faint)}
 
 /* ===== list ===== */
 main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
@@ -190,8 +200,11 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 </header>
 
 <div id="addRow">
+  <div class="addwrap">
   <input id="newItem" placeholder="מה להוסיף? אפשר כמה, בפסיקים" list="catalogDl" autocomplete="off"
          autocorrect="off" autocapitalize="off" enterkeyhint="next">
+  <button id="clearQ" type="button" aria-label="ניקוי החיפוש" hidden>✕</button>
+  </div>
 </div>
 <datalist id="catalogDl"></datalist>
 
@@ -215,10 +228,10 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
         <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
       </summary>
       <dl>
-        <dt>○</dt><dd>קניתי. הפריט יורד לתחתית הרשימה</dd>
+        <dt>○</dt><dd>קניתי. הפריט יורד לתחתית הרשימה. כל קבוצה מסודרת לפי א־ב</dd>
         <dt>⊗</dt><dd>אין במלאי. נשאר ברשימה לפעם הבאה</dd>
         <dt>↺</dt><dd>סבב קנייה חדש: מנקה את כל הסימונים, הפריטים נשארים</dd>
-        <dt>＋</dt><dd>הוספה. אפשר כמה בבת אחת: <b>חלב, לחם, ביצים</b>, או להדביק רשימה מוואטסאפ</dd>
+        <dt>＋</dt><dd>הוספה וחיפוש. ההקלדה מסננת את הרשימה, ו־Enter מוסיף. אפשר כמה בבת אחת: <b>חלב, לחם, ביצים</b>, או להדביק רשימה מוואטסאפ</dd>
         <dt>לחיצה ארוכה</dt><dd>על שם פריט: עריכת השם</dd>
         <dt>גרירה שמאלה</dt><dd>מחיקה. "בטל" בהודעה שמופיעה למטה מחזיר</dd>
       </dl>
@@ -270,7 +283,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-21b';
+const VERSION      = '2026-09-21c';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -419,18 +432,39 @@ function bumpCatalog(name){
   c.count++; c.last = now(); state.catalog[name] = c;
   pruneCatalog();
 }
+/* השוואת שמות סלחנית: בלי ניקוד, אותיות סופיות כרגילות, בלי רווחים כפולים.
+   כך "מעדנ" מוצא את "מעדנים", ו"עגבניה " זהה ל"עגבניה". */
+const FINALS = {'ך':'כ','ם':'מ','ן':'נ','ף':'פ','ץ':'צ'};
+function norm(s){
+  return (s || '').toLowerCase().replace(/[֑-ׇ]/g, '')
+    .replace(/[ךםןףץ]/g, c => FINALS[c]).replace(/\s+/g, ' ').trim();
+}
+function findByName(name){
+  const act = activeItems();
+  return act.find(i => i.name === name) || act.find(i => norm(i.name) === norm(name));
+}
+
 function addItem(name){
   name = canon((name||'').trim());
   if(!name) return;
   snapshot();
-  const ex = state.items.find(i => !i.deleted && i.name === name);
-  if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); toast('כבר ברשימה'); }
-  else {
+  const ex = findByName(name);
+  let id, msg, changed = true;
+  if(ex){
+    const wasMarked = ex.done || ex.skip;
+    ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id);
+    id = ex.id;
+    msg = wasMarked ? ex.name + ' חזר לרשימה' : ex.name + ' כבר ברשימה';
+    changed = wasMarked;
+  } else {
     const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
     state.items.push(it); dirty.add(it.id);
+    id = it.id; msg = 'נוסף: ' + name;
   }
-  bumpCatalog(name);
+  bumpCatalog(ex ? ex.name : name);
   afterChange();
+  flash(id);
+  toast(msg, changed);
 }
 /* מדביקים "חלב, לחם, ביצים" ומקבלים שלושה פריטים.
    מפרידים: פסיק, נקודה-פסיק או ירידת שורה. */
@@ -440,39 +474,50 @@ function splitNames(raw){
 function addFromInput(){
   const names = splitNames($('newItem').value);
   if(!names.length) return;
+  clearQuery();                 // קודם מנקים את החיפוש, כדי שהרשימה תצויר מלאה
   if(names.length === 1) addItem(names[0]);
   else addMany(names);
-  $('newItem').value = '';
   $('newItem').focus();
 }
 function addMany(names){
   snapshot();
-  let added = 0, dup = 0;
+  let added = 0, back = 0, already = 0;
+  const ids = [];
   for(const raw of names){
     const name = canon(raw);
     if(!name) continue;
-    const ex = state.items.find(i => !i.deleted && i.name === name);
-    if(ex){ ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); dup++; }
-    else {
+    const ex = findByName(name);
+    if(ex){
+      if(ex.done || ex.skip) back++; else already++;
+      ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); ids.push(ex.id);
+      bumpCatalog(ex.name);
+    } else {
       const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
-      state.items.push(it); dirty.add(it.id); added++;
+      state.items.push(it); dirty.add(it.id); ids.push(it.id); added++;
+      bumpCatalog(name);
     }
-    bumpCatalog(name);
   }
   afterChange();
-  toast('נוספו ' + added + ' פריטים' + (dup ? ' · ' + dup + ' כבר היו ברשימה' : ''), true);
+  ids.forEach(flash);
+  const parts = [];
+  if(added)   parts.push(added === 1 ? 'נוסף 1' : 'נוספו ' + added);
+  if(back)    parts.push(back === 1 ? '1 חזר לרשימה' : back + ' חזרו לרשימה');
+  if(already) parts.push(already + ' כבר ברשימה');
+  toast(parts.join(' · '), added + back > 0);
 }
 function toggleBuy(id){
   const it = byId(id); if(!it) return;
   snapshot();
   it.done = !it.done; if(it.done) it.skip = false;
   it.updatedAt = now(); afterTap(id);
+  endSearchAfterMark(id);
 }
 function toggleSkip(id){
   const it = byId(id); if(!it) return;
   snapshot();
   it.skip = !it.skip; if(it.skip) it.done = false;
   it.updatedAt = now(); afterTap(id);
+  endSearchAfterMark(id);
 }
 function chQty(id, d){
   const it = byId(id); if(!it) return;
@@ -553,9 +598,23 @@ const SVG_SKIP = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><line
    הפילה את חלונית ההשלמה של iOS באמצע ההקלדה. */
 function fillCatalogList(){
   const c = state.catalog || {};
+  /* רק שמות שלא נמצאים כרגע ברשימה. את מה שכבר ברשימה החיפוש מציג
+     כשורות אמיתיות עם כפתורים, ואין טעם להציע אותם פעמיים. */
+  const inList = new Set(activeItems().map(i => norm(i.name)));
   $('catalogDl').innerHTML = Object.keys(c)
+    .filter(n => !inList.has(norm(n)))
     .sort((a, b) => (c[b].count||0) - (c[a].count||0) || (c[b].last||0) - (c[a].last||0))
     .slice(0, 120).map(n => `<option value="${esc(n)}">`).join('');
+}
+
+/* פריט שנוסף או חזר לרשימה מהבהב לרגע, כדי שיהיה ברור איפה הוא נחת
+   בסדר האלף־בית. גוללים אליו רק כשלא מקלידים, כדי לא לזרוק את השדה מהמסך. */
+function flash(id){
+  const row = document.querySelector('.item[data-id="' + id + '"]');
+  if(!row) return;
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+  if(document.activeElement !== $('newItem')) row.scrollIntoView({block:'nearest', behavior:'smooth'});
+  setTimeout(() => row.classList.remove('flash'), 1500);
 }
 
 function tagFor(i){
@@ -565,15 +624,30 @@ function tagFor(i){
 }
 
 /* סדר הרשימה: מה שעוד לא נקנה למעלה, אחריו החסרים, ובתחתית מה שנקנה.
-   בתוך כל קבוצה, החדש ביותר ראשון, לפי createdAt שלא משתנה לעולם,
-   כך ששינוי כמות או עריכת שם לא מזיזים פריט ממקומו. */
+   בתוך כל קבוצה: סדר אלף־בית. המיון העברי של הדפדפן מתייחס לאות סופית
+   כמו לרגילה ומסדר מספרים לפי ערך ("גבינה 5%" לפני "גבינה 9%"). */
+const HE = new Intl.Collator('he', {sensitivity:'base', numeric:true});
+
+/* החיפוש: מה שמוקלד כרגע בשדה ההוספה מסנן את הרשימה.
+   ברשימה עם פסיקים מסננים לפי הקטע האחרון, זה שבאמצע ההקלדה. */
+function currentQuery(){
+  if(!$('addRow').classList.contains('show')) return '';
+  const parts = ($('newItem').value || '').split(/[,;\n\r]/);
+  return norm(parts[parts.length - 1]);
+}
+function paintClear(){ $('clearQ').hidden = !$('newItem').value; }
+function clearQuery(){ $('newItem').value = ''; paintClear(); }
+
 function render(){
   const rank = i => i.done ? 2 : (i.skip ? 1 : 0);
-  const born = i => i.createdAt || i.updatedAt || 0;
-  const items = activeItems().sort((a,b) => rank(a)-rank(b) || born(b)-born(a));
+  let items = activeItems().sort((a,b) => rank(a)-rank(b) || HE.compare(a.name, b.name));
+  const q = currentQuery();
+  if(q) items = items.filter(i => norm(i.name).includes(q));
   const w = $('itemsWrap');
 
-  if(items.length === 0){
+  if(items.length === 0 && q){
+    w.innerHTML = '<div class="empty">אין פריט כזה ברשימה<br><small>Enter יוסיף אותו</small></div>';
+  } else if(items.length === 0){
     w.innerHTML = '<div class="empty">הרשימה ריקה</div>';
   } else {
     w.innerHTML = items.map(i => {
@@ -605,6 +679,24 @@ function toggleAdd(){
   inp.focus();
 }
 $('newItem').addEventListener('keydown', e => { if(e.key === 'Enter') addFromInput(); });
+$('newItem').addEventListener('input', () => { paintClear(); render(); });
+
+/* ✕ בתוך השדה: מנקה את החיפוש ומחזיר את הרשימה המלאה */
+$('clearQ').addEventListener('click', () => {
+  clearQuery(); render(); $('newItem').focus();
+});
+
+/* סימון ○ או ⊗ על תוצאת חיפוש סוגר את החיפוש: הפעולה בוצעה,
+   הרשימה המלאה חוזרת, והפריט מהבהב במקומו החדש. */
+function endSearchAfterMark(id){
+  if(!currentQuery()) return false;
+  clearTimeout(resortTimer);
+  clearQuery();
+  if(activeItems().length) $('addRow').classList.remove('show');
+  render();
+  flash(id);
+  return true;
+}
 
 /* הדבקה של רשימה שלמה (למשל מוואטסאפ). חייבים לתפוס את זה כאן:
    שדה חד-שורתי הופך ירידות שורה לרווחים לפני שהערך מגיע לקוד. */
@@ -615,8 +707,8 @@ $('newItem').addEventListener('paste', e => {
   e.preventDefault();
   const names = splitNames($('newItem').value + '\n' + txt);
   if(!names.length) return;
+  clearQuery();
   if(names.length === 1) addItem(names[0]); else addMany(names);
-  $('newItem').value = '';
   $('newItem').focus();
 });
 $('newItem').addEventListener('blur', () => {
