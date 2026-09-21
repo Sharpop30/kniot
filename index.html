@@ -149,6 +149,17 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .btn.red{background:none;color:var(--danger);font-weight:500}
 .rowb{display:flex;gap:8px}
 .ver{text-align:center;color:var(--faint);font-size:.75rem;margin:14px 0 0;direction:rtl}
+/* מדריך שימוש מקופל בראש ההגדרות */
+.guide summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary h3{margin:0}
+.guide summary::after{content:'▾';color:var(--faint);font-size:.9rem}
+.guide[open] summary::after{content:'▴'}
+.guide dl{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:14px 0 0;font-size:.9rem}
+.guide dt{font-weight:700;white-space:nowrap}
+.guide dd{margin:0;color:var(--muted);line-height:1.45}
+.guide dd b{color:var(--text);font-weight:600}
+.gnote{color:var(--faint);font-size:.8rem;margin:12px 0 0 !important}
 .toast{position:fixed;bottom:36px;right:50%;transform:translateX(50%);background:var(--text);color:var(--bg);
   padding:11px 20px;border-radius:24px;font-size:.9rem;z-index:60;opacity:0;transition:opacity .25s;
   pointer-events:none;white-space:nowrap;font-weight:500}
@@ -187,6 +198,19 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   <div class="sheet">
     <h2>הגדרות</h2>
 
+    <details class="sec guide">
+      <summary><h3>איך משתמשים</h3></summary>
+      <dl>
+        <dt>○</dt><dd>קניתי. הפריט יורד לתחתית הרשימה</dd>
+        <dt>⊗</dt><dd>אין במלאי. נשאר ברשימה לפעם הבאה</dd>
+        <dt>↺</dt><dd>סבב קנייה חדש: מנקה את כל הסימונים, הפריטים נשארים</dd>
+        <dt>＋</dt><dd>הוספה. אפשר כמה בבת אחת: <b>חלב, לחם, ביצים</b>, או להדביק רשימה מוואטסאפ</dd>
+        <dt>לחיצה ארוכה</dt><dd>על שם פריט: עריכת השם</dd>
+        <dt>גרירה שמאלה</dt><dd>מחיקה. "בטל" בהודעה שמופיעה למטה מחזיר</dd>
+      </dl>
+      <p class="gnote">השינויים מסתנכרנים לטלפון השני תוך שניות. ↺ ומחיקה משפיעים על שניכם.</p>
+    </details>
+
     <div class="sec">
       <h3>מראה</h3>
       <div class="seg" id="themeSeg">
@@ -213,15 +237,6 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
     </div>
 
     <div class="sec">
-      <h3>גיבוי</h3>
-      <div class="rowb">
-        <button class="btn sub" style="flex:1" onclick="exportData()">ייצוא קובץ</button>
-        <button class="btn sub" style="flex:1" onclick="importFile.click()">ייבוא קובץ</button>
-        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(this)">
-      </div>
-    </div>
-
-    <div class="sec">
       <h3>התקנה</h3>
       <p style="margin:0">בדפדפן בטלפון: שיתוף ← "הוספה למסך הבית". האפליקציה תיפתח כמו אפליקציה רגילה, גם בלי אינטרנט.</p>
     </div>
@@ -231,7 +246,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
     </div>
 
     <button class="btn sub" onclick="closeSettings()">סגירה</button>
-    <p class="ver">גרסה <span id="verNum"></span> · <span id="verInfo"></span></p>
+    <p class="ver">גרסה <span id="verNum"></span> · נוצר על ידי sharpai</p>
   </div>
 </div>
 
@@ -241,7 +256,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-20';
+const VERSION      = '2026-09-21';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה — נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -724,8 +739,6 @@ function renderSettings(){
   if(token) $('syncState').textContent = syncSummary();
   /* מספר הגרסה עונה על "האם הטלפון כבר קיבל את העדכון, או שזה מטמון ישן" */
   $('verNum').textContent = VERSION;
-  const n = activeItems().length;
-  $('verInfo').textContent = n === 1 ? 'פריט אחד ברשימה' : n + ' פריטים ברשימה';
   applyTheme();
 }
 
@@ -898,26 +911,6 @@ function disconnect(){
   setSync(''); renderSettings();
 }
 
-/* ================= גיבוי ================= */
-function exportData(){
-  const blob = new Blob([JSON.stringify({state}, null, 1)], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'kniot-backup-' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-}
-function importData(inp){
-  const f = inp.files[0]; if(!f) return;
-  const r = new FileReader();
-  r.onload = () => {
-    try{
-      const d = JSON.parse(r.result);
-      state = mergeStates(state, d.state ? d.state : d);
-      afterChange(); toast('הייבוא הושלם');
-    }catch(e){ toast('קובץ לא תקין'); }
-  };
-  r.readAsText(f); inp.value = '';
-}
 function wipe(){
   if(!confirm('למחוק את כל הנתונים במכשיר זה? (הענן לא נמחק)')) return;
   Object.values(LS).forEach(k => localStorage.removeItem(k));
