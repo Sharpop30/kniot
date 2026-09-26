@@ -143,6 +143,10 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .hint{color:var(--faint);font-size:.9rem;line-height:1.7;text-align:center;
   margin:26px auto 0;max-width:320px;padding:0 20px}
 .hint .g{white-space:nowrap}
+/* אחרי שהמדריך נפתח פעם אחת, שורת ההסבר המלאה מתקצרת לשורה אחת שפותחת אותו */
+.hint.short{display:block;background:none;border:none;font-family:inherit;cursor:pointer;padding:6px 20px}
+.hint.short:active{opacity:.5}
+.hint[hidden]{display:none}
 .empty{text-align:center;color:var(--faint);padding:56px 24px 0;font-size:1.05rem}
 
 /* ===== sheet ===== */
@@ -230,11 +234,12 @@ h1.alert{cursor:pointer}
 
 <main>
   <div id="itemsWrap"></div>
-  <p class="hint">
+  <p class="hint" id="hintFull">
     <span class="g">הקישו ○ כשקניתם</span> · <span class="g">⊗ אם אין במלאי</span> ·
     <span class="g">גררו שמאלה למחיקה</span> · <span class="g">ימינה לסימון דחוף</span> ·
     <span class="g">לחיצה ארוכה על השם לעריכה</span>
   </p>
+  <button class="hint short" id="hintShort" type="button" onclick="openGuide()" hidden>כל הפעולות מוסברות ב־⚙</button>
 </main>
 
 <!-- ===== הגדרות ===== -->
@@ -319,7 +324,7 @@ h1.alert{cursor:pointer}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-26.2';
+const VERSION      = '2026-09-26.3';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -382,9 +387,29 @@ window.addEventListener('unhandledrejection', e => {
   logError('code', (r && r.message) || String(r), r && r.stack ? String(r.stack).split('\n')[1] : '');
 });
 
+/* כל פריט שמגיע מהגיסט או מהזיכרון עובר ניקוי לפני שהוא מוצג:
+   מזהה רק מאותיות, ספרות ומקף, כמות מספר שלם בין 1 ל־999, שם כטקסט.
+   השם תמיד מוצג כטקסט, אבל המזהה והכמות נכנסים לתצוגה כמו שהם,
+   ולכן ערך זדוני בגיסט לא יוכל להפוך לקוד שרץ באפליקציה. */
+function cleanItem(it){
+  if(!it || typeof it !== 'object') return null;
+  const id = String(it.id == null ? '' : it.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  if(!id) return null;
+  const out = {...it, id, name: String(it.name == null ? '' : it.name).slice(0, 200)};
+  const q = Math.floor(Number(it.qty));
+  out.qty = q >= 1 && q <= 999 ? q : 1;
+  out.done = !!it.done; out.skip = !!it.skip;
+  if(it.urgent) out.urgent = true; else delete out.urgent;
+  if(it.deleted) out.deleted = true; else delete out.deleted;
+  out.updatedAt = Number(it.updatedAt) || 0;
+  if(it.createdAt != null) out.createdAt = Number(it.createdAt) || 0;
+  return out;
+}
+function cleanItems(list){ return (Array.isArray(list) ? list : []).map(cleanItem).filter(Boolean); }
+
 function loadLocal(){
   try{ const s = JSON.parse(localStorage.getItem(LS.state)); if(s && s.items) state = s; }catch(e){}
-  state.items = state.items || [];
+  state.items = cleanItems(state.items);
   state.purchases = state.purchases || [];
   state.catalog = state.catalog || {};
   state.aliases = state.aliases || {};
@@ -418,7 +443,7 @@ function mergeStates(a, b, mine){
     if(!ex || (it.updatedAt||0) > (ex.updatedAt||0)) byId[it.id] = it;
   }
   const week = 7*24*3600*1000;
-  out.items = Object.values(byId).filter(it => !(it.deleted && now()-(it.updatedAt||0) > week));
+  out.items = cleanItems(Object.values(byId)).filter(it => !(it.deleted && now()-(it.updatedAt||0) > week));
   const pById = {};
   for(const p of [...(a.purchases||[]), ...(b.purchases||[])]){
     const ex = pById[p.id];
@@ -955,11 +980,19 @@ mq.addEventListener('change', () => { if(themePref() === 'auto') applyTheme(); }
 /* ================= הגדרות ================= */
 /* בפעם הראשונה שפותחים את ההגדרות במכשיר, המדריך נפתח מעצמו,
    כדי שמשתמש חדש יראה אותו בלי לחפש. אחר כך הוא נשאר סגור. */
+function paintHint(){
+  let seen = false;
+  try{ seen = !!localStorage.getItem(LS.guideSeen); }catch(e){}
+  $('hintFull').hidden = seen;
+  $('hintShort').hidden = !seen;
+}
+function openGuide(){ openSettings(); $('guide').open = true; }
 function openSettings(showLog){
   renderSettings();
   try{
     if(!showLog && !localStorage.getItem(LS.guideSeen)){ $('guide').open = true; localStorage.setItem(LS.guideSeen, '1'); }
   }catch(e){}
+  paintHint();
   $('setOverlay').classList.add('show');
   if(showLog){
     $('guide').open = false;
@@ -1239,6 +1272,7 @@ document.querySelector('h1').addEventListener('click', () => {
 applyTheme();
 loadLocal();
 render();
+paintHint();
 if(!activeItems().length) $('addRow').classList.add('show');
 fillCatalogList();
 setSync(navigator.onLine ? '' : 'wait');
