@@ -324,7 +324,7 @@ h1.alert{cursor:pointer}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-26.3';
+const VERSION      = '2026-09-26.4';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -436,14 +436,15 @@ function mergeStates(a, b, mine){
   const out = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, lineMap:{}, v:1};
   const byId = {};
   const local = {};
-  for(const it of (a.items||[])) local[it.id] = it;
-  for(const it of [...(a.items||[]), ...(b.items||[])]){
+  const aItems = cleanItems(a.items), bItems = cleanItems(b.items);   // פריט שבור בגיסט לא יפיל את הסנכרון
+  for(const it of aItems) local[it.id] = it;
+  for(const it of [...aItems, ...bItems]){
     if(mine && mine.has(it.id)){ byId[it.id] = local[it.id] || it; continue; }
     const ex = byId[it.id];
     if(!ex || (it.updatedAt||0) > (ex.updatedAt||0)) byId[it.id] = it;
   }
   const week = 7*24*3600*1000;
-  out.items = cleanItems(Object.values(byId)).filter(it => !(it.deleted && now()-(it.updatedAt||0) > week));
+  out.items = Object.values(byId).filter(it => !(it.deleted && now()-(it.updatedAt||0) > week));
   const pById = {};
   for(const p of [...(a.purchases||[]), ...(b.purchases||[])]){
     const ex = pById[p.id];
