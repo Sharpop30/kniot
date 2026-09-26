@@ -180,6 +180,18 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .guide dd{margin:0;color:var(--muted);line-height:1.45}
 .guide dd b{color:var(--text);font-weight:600}
 .gnote{color:var(--faint);font-size:.8rem;margin:12px 0 0 !important}
+/* יומן תקלות */
+.log .gicon{background:var(--btn-press);color:var(--muted)}
+.log .gicon.warn{background:var(--danger);color:#fff}
+#logList{margin:12px 0 0;display:flex;flex-direction:column;gap:8px}
+.le{background:var(--field);border-radius:10px;padding:10px 12px;font-size:.86rem;line-height:1.45}
+.le .lh{display:flex;justify-content:space-between;gap:8px;color:var(--faint);font-size:.75rem;margin-bottom:3px}
+.le .lm{color:var(--text);unicode-bidi:plaintext}
+.le .ld{color:var(--faint);font-size:.74rem;margin-top:3px;word-break:break-word;unicode-bidi:plaintext}
+.lempty{color:var(--muted);font-size:.86rem;margin:0}
+#logBtns{margin-top:12px}
+#logBtns[hidden]{display:none}
+h1.alert{cursor:pointer}
 .toast{position:fixed;bottom:36px;right:50%;transform:translateX(50%);background:var(--text);color:var(--bg);
   padding:11px 20px;border-radius:24px;font-size:.9rem;z-index:60;opacity:0;transition:opacity .25s;
   pointer-events:none;white-space:nowrap;font-weight:500}
@@ -268,6 +280,19 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
       <p style="margin:0">בדפדפן בטלפון: שיתוף ← "הוספה למסך הבית". האפליקציה תיפתח כמו אפליקציה רגילה, גם בלי אינטרנט.</p>
     </div>
 
+    <details class="sec guide log" id="logBox">
+      <summary>
+        <span class="gicon" id="logIcon">!</span>
+        <span class="gtext"><b>יומן תקלות</b><small id="logSub">אין תקלות</small></span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </summary>
+      <div id="logList"></div>
+      <div class="rowb" id="logBtns">
+        <button class="btn sub" style="flex:2" onclick="copyLog()">העתקה לשליחה</button>
+        <button class="btn sub" style="flex:1" onclick="clearLog()">ניקוי</button>
+      </div>
+    </details>
+
     <div class="sec">
       <button class="btn red" onclick="wipe()">מחיקת כל הנתונים במכשיר זה</button>
     </div>
@@ -283,7 +308,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-21c';
+const VERSION      = '2026-09-26';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -303,6 +328,48 @@ let dirty = new Set();   // פריטים ששיניתי כאן וטרם נדחפ
 const now = () => Date.now();
 const uid = () => now().toString(36) + Math.random().toString(36).slice(2,7);
 const $ = id => document.getElementById(id);
+
+/* ================= יומן תקלות =================
+   נשמר רק במכשיר, לא מסונכרן. 30 רשומות אחרונות.
+   לא נרשמים: ניתוקי רשת (הם לא תקלה), הטוקן, ותוכן הרשימה.
+   תקלה שחוזרת ברצף (למשל טוקן פג, כל 30 שניות) נאספת לשורה אחת עם מונה. */
+const LOG_KEY = 'kniot_log', LOG_MAX = 30;
+function readLog(){ try{ return JSON.parse(localStorage.getItem(LOG_KEY)) || []; }catch(e){ return []; } }
+function writeLog(l){ try{ localStorage.setItem(LOG_KEY, JSON.stringify(l.slice(-LOG_MAX))); }catch(e){} }
+function redact(s){
+  return String(s == null ? '' : s)
+    .replace(/(ghp_|gho_|github_pat_)[A-Za-z0-9_]+/g, '[token]')
+    .slice(0, 300);
+}
+function logError(kind, msg, detail){
+  try{
+    const l = readLog();
+    const m = redact(msg), d = redact(detail);
+    const last = l[l.length - 1];
+    if(last && last.kind === kind && last.msg === m){ last.n = (last.n || 1) + 1; last.t = Date.now(); }
+    else l.push({t: Date.now(), kind, msg: m, detail: d, v: VERSION, n: 1});
+    writeLog(l);
+    if($('setOverlay') && $('setOverlay').classList.contains('show')) renderLog();
+  }catch(e){}
+}
+/* הסבר בעברית פשוטה לכל קוד שגיאה של GitHub */
+function explainSync(code){
+  if(code === 401) return 'הטוקן לא תקף: בוטל, פג, או הודבק חלקית. צריך ליצור טוקן חדש ולחבר מחדש ב־⚙.';
+  if(code === 403) return 'GitHub סירב: או שלטוקן אין הרשאת gist, או שנחצתה מגבלת הבקשות לשעה. אם זה חוזר, צריך טוקן חדש.';
+  if(code === 404) return 'הגיסט עם הרשימה לא נמצא ולא הצלחנו ליצור חדש.';
+  if(code === 409 || code === 422) return 'GitHub דחה את השמירה. בדרך כלל זה חולף בסנכרון הבא.';
+  if(code >= 500) return 'תקלה זמנית בשרתים של GitHub. בדרך כלל חולפת לבד.';
+  return 'הסנכרון נכשל מסיבה לא מוכרת.';
+}
+window.addEventListener('error', e => {
+  if(!e.message || e.message === 'Script error.') return;   // שגיאה אטומה מדף אחר, אין בה מידע
+  logError('code', e.message, (String(e.filename || '').split('/').pop() || 'index.html') + ':' + (e.lineno || '?'));
+});
+window.addEventListener('unhandledrejection', e => {
+  const r = e.reason;
+  if(r && r.netFail) return;                                   // ניתוק רשת, לא תקלה
+  logError('code', (r && r.message) || String(r), r && r.stack ? String(r.stack).split('\n')[1] : '');
+});
 
 function loadLocal(){
   try{ const s = JSON.parse(localStorage.getItem(LS.state)); if(s && s.items) state = s; }catch(e){}
@@ -839,15 +906,87 @@ mq.addEventListener('change', () => { if(themePref() === 'auto') applyTheme(); }
 /* ================= הגדרות ================= */
 /* בפעם הראשונה שפותחים את ההגדרות במכשיר, המדריך נפתח מעצמו,
    כדי שמשתמש חדש יראה אותו בלי לחפש. אחר כך הוא נשאר סגור. */
-function openSettings(){
+function openSettings(showLog){
   renderSettings();
   try{
-    if(!localStorage.getItem(LS.guideSeen)){ $('guide').open = true; localStorage.setItem(LS.guideSeen, '1'); }
+    if(!showLog && !localStorage.getItem(LS.guideSeen)){ $('guide').open = true; localStorage.setItem(LS.guideSeen, '1'); }
   }catch(e){}
   $('setOverlay').classList.add('show');
+  if(showLog){
+    $('guide').open = false;
+    $('logBox').open = true;
+    setTimeout(() => $('logBox').scrollIntoView({block:'center', behavior:'smooth'}), 60);
+  }
+}
+
+/* ================= תצוגת יומן התקלות ================= */
+const LOG_KIND = {sync:'סנכרון', connect:'התחברות', code:'שגיאת קוד'};
+function fmtWhen(t){
+  return new Date(t).toLocaleString('he-IL', {day:'numeric', month:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+function agoText(t){
+  const m = Math.round((Date.now() - t) / 60000);
+  if(m < 1) return 'זה עתה';
+  if(m === 1) return 'לפני דקה';
+  if(m < 60) return 'לפני ' + m + ' דקות';
+  const h = Math.round(m / 60);
+  if(h < 24) return h === 1 ? 'לפני שעה' : 'לפני ' + h + ' שעות';
+  const d = Math.round(h / 24);
+  return d === 1 ? 'אתמול' : 'לפני ' + d + ' ימים';
+}
+function renderLog(){
+  const l = readLog();
+  const icon = $('logIcon'), sub = $('logSub');
+  icon.classList.toggle('warn', l.length > 0);
+  $('logBtns').hidden = l.length === 0;
+  if(!l.length){
+    sub.textContent = 'אין תקלות';
+    $('logList').innerHTML = '<p class="lempty">אין תקלות רשומות במכשיר הזה. אם משהו ישתבש, הפרטים יופיעו כאן.</p>';
+    return;
+  }
+  const last = l[l.length - 1];
+  sub.textContent = (l.length === 1 ? 'תקלה אחת' : l.length + ' תקלות') + ' · האחרונה ' + agoText(last.t);
+  $('logList').innerHTML = l.slice().reverse().map(e => `
+    <div class="le">
+      <div class="lh"><span>${esc(LOG_KIND[e.kind] || e.kind)}${e.n > 1 ? ' · ' + e.n + ' פעמים' : ''}</span><span>${esc(fmtWhen(e.t))}</span></div>
+      <div class="lm">${esc(e.msg)}</div>
+      ${e.detail ? `<div class="ld">${esc(e.detail)}</div>` : ''}
+    </div>`).join('');
+}
+function logAsText(){
+  const l = readLog();
+  const head = [
+    'יומן תקלות · הקניות שלנו · גרסה ' + VERSION,
+    'סנכרון: ' + (token ? 'מחובר' : 'לא מחובר') + ' · ' + (navigator.onLine ? 'יש רשת' : 'אין רשת'),
+    'מכשיר: ' + navigator.userAgent,
+    ''
+  ];
+  const body = l.slice().reverse().map(e =>
+    fmtWhen(e.t) + ' [' + (LOG_KIND[e.kind] || e.kind) + ']' + (e.n > 1 ? ' ×' + e.n : '') + ' (גרסה ' + e.v + ')\n' +
+    e.msg + (e.detail ? '\n' + e.detail : ''));
+  return head.join('\n') + '\n' + body.join('\n\n');
+}
+async function copyLog(){
+  const text = logAsText();
+  let ok = false;
+  try{ await navigator.clipboard.writeText(text); ok = true; }catch(e){}
+  if(!ok){
+    /* גיבוי לדפדפנים שחוסמים את ממשק הלוח */
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try{ ok = document.execCommand('copy'); }catch(e){}
+    ta.remove();
+  }
+  toast(ok ? 'הועתק. אפשר להדביק בצ\'אט' : 'ההעתקה נכשלה');
+}
+function clearLog(){
+  if(!confirm('לנקות את יומן התקלות?')) return;
+  writeLog([]); renderLog();
 }
 function closeSettings(){ $('setOverlay').classList.remove('show'); }
 function renderSettings(){
+  renderLog();
   $('setDisconnected').style.display = token ? 'none' : 'block';
   $('setConnected').style.display = token ? 'block' : 'none';
   if(token) $('syncState').textContent = syncSummary();
@@ -879,6 +1018,7 @@ $('toast').addEventListener('click', () => {
 function setSync(cls){
   const d = $('syncDot');
   d.className = 'dot ' + (token ? cls : 'none');
+  document.querySelector('h1').classList.toggle('alert', token && cls === 'err');
   d.title = {ok:'מסונכרן', busy:'מסנכרן...', wait:'אין רשת, ממתין', err:'שגיאת סנכרון'}[cls] || '';
 }
 /* שורת מצב קריאה בהגדרות, במקום לפענח צבע של נקודה */
@@ -982,7 +1122,12 @@ async function doSync(quiet){
     console.error(e);
     /* אין רשת זו לא תקלה: הכל שמור מקומית ויעלה כשהחיבור יחזור.
        רק כשל אמיתי מהשרת (טוקן פג, גיסט נמחק) ראוי לאדום. */
-    setSync((!navigator.onLine || e.netFail === true) ? 'wait' : 'err');
+    const netFail = !navigator.onLine || e.netFail === true;
+    if(!netFail){
+      const m = String(e.message || '').match(/GitHub (\d+)/);
+      logError('sync', m ? explainSync(+m[1]) : 'שגיאה בקוד הסנכרון: ' + (e.message || e), m ? 'GitHub ' + m[1] : '');
+    }
+    setSync(netFail ? 'wait' : 'err');
   }finally{ syncing = false; }
 }
 
@@ -1014,8 +1159,10 @@ async function connect(){
     renderSettings();
     toast('מחובר. הרשימה משותפת');
   }catch(e){
-    token = ''; setSync('err');
-    toast('החיבור נכשל. בדקו את ה-token');
+    const m = String(e.message || '').match(/GitHub (\d+)/);
+    if(!e.netFail) logError('connect', m ? explainSync(+m[1]) : 'החיבור נכשל: ' + (e.message || e), m ? 'GitHub ' + m[1] : '');
+    token = ''; setSync(e.netFail ? 'wait' : 'err');
+    toast(e.netFail ? 'אין רשת. נסו שוב כשיש חיבור' : 'החיבור נכשל. הפרטים ביומן התקלות');
   }
 }
 function disconnect(){
@@ -1035,6 +1182,10 @@ function wipe(){
 window.addEventListener('online', () => { if(token) doSync(); });
 window.addEventListener('offline', () => { if(token) setSync('wait'); });
 document.addEventListener('visibilitychange', () => { if(!document.hidden && token) doSync(); });
+
+document.querySelector('h1').addEventListener('click', () => {
+  if($('syncDot').classList.contains('err')) openSettings(true);
+});
 
 applyTheme();
 loadLocal();
