@@ -42,11 +42,13 @@
   --bg:#ffffff; --text:#0d0d0f; --muted:#8e8e93; --faint:#b9b9bf;
   --line:rgba(0,0,0,.10); --btn:rgba(0,0,0,.055); --btn-press:rgba(0,0,0,.11);
   --danger:#d93a3f; --sheet:#ffffff; --field:rgba(0,0,0,.045);
+  --urgent:#c45f00; --urgent-bg:#e07800;
 }
 html[data-theme="dark"]{
   --bg:#000000; --text:#f2f2f5; --muted:#7d7d84; --faint:#5a5a61;
   --line:rgba(255,255,255,.12); --btn:rgba(255,255,255,.08); --btn-press:rgba(255,255,255,.16);
   --danger:#ff4d4f; --sheet:#151517; --field:rgba(255,255,255,.07);
+  --urgent:#ff9f0a; --urgent-bg:#d97706;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
@@ -102,6 +104,11 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .del{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-start;
   padding:0 22px;background:var(--danger);color:#fff;font-size:.95rem;font-weight:600}
 .item.swiping .del{display:flex}
+/* גרירה ימינה = דחוף. כתום ולא אדום, כדי שלא יתבלבל עם מחיקה */
+.urg{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-end;
+  padding:0 22px;background:var(--urgent-bg);color:#fff;font-size:.95rem;font-weight:600}
+.item.swiping.right .del{display:none}
+.item.swiping.right .urg{display:flex}
 .surface{position:relative;display:flex;align-items:center;gap:6px;padding:16px;background:var(--bg);
   touch-action:pan-y;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .edit{width:100%;font:inherit;font-size:1.18rem;font-weight:600;color:var(--text);
@@ -116,6 +123,7 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 .item.skip .name{color:var(--faint);font-weight:500}
 .tag{font-style:normal;font-size:.7rem;font-weight:700;color:var(--faint);
   margin-inline-start:9px;letter-spacing:.03em;white-space:nowrap;vertical-align:2px}
+.tag.u{color:var(--urgent)}
 .mark{width:44px;height:44px;min-width:44px;border-radius:50%;background:none;border:none;padding:0;
   display:flex;align-items:center;justify-content:center}
 .mark svg{width:26px;height:26px;display:block;transition:opacity .12s}
@@ -224,7 +232,8 @@ h1.alert{cursor:pointer}
   <div id="itemsWrap"></div>
   <p class="hint">
     <span class="g">הקישו ○ כשקניתם</span> · <span class="g">⊗ אם אין במלאי</span> ·
-    <span class="g">גררו שמאלה למחיקה</span> · <span class="g">לחיצה ארוכה על השם לעריכה</span>
+    <span class="g">גררו שמאלה למחיקה</span> · <span class="g">ימינה לסימון דחוף</span> ·
+    <span class="g">לחיצה ארוכה על השם לעריכה</span>
   </p>
 </main>
 
@@ -246,6 +255,8 @@ h1.alert{cursor:pointer}
         <dt>＋</dt><dd>הוספה וחיפוש. ההקלדה מסננת את הרשימה, ו־Enter מוסיף. אפשר כמה בבת אחת: <b>חלב, לחם, ביצים</b>, או להדביק רשימה מוואטסאפ</dd>
         <dt>לחיצה ארוכה</dt><dd>על שם פריט: עריכת השם</dd>
         <dt>גרירה שמאלה</dt><dd>מחיקה. "בטל" בהודעה שמופיעה למטה מחזיר</dd>
+        <dt>גרירה ימינה</dt><dd>סימון <b>דחוף</b>: הפריט עולה לראש הרשימה עם תגית כתומה. גרירה נוספת מבטלת, והסימון יורד לבד כשמסמנים ○</dd>
+        <dt>!</dt><dd>סימן קריאה בסוף השם מוסיף כדחוף: <b>חלב!</b>. עובד גם ברשימה עם פסיקים ובעריכת שם</dd>
       </dl>
       <p class="gnote">השינויים מסתנכרנים לטלפון השני תוך שניות. ↺ ומחיקה משפיעים על שניכם.</p>
     </details>
@@ -308,7 +319,7 @@ h1.alert{cursor:pointer}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-26';
+const VERSION      = '2026-09-26.2';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -511,8 +522,16 @@ function findByName(name){
   return act.find(i => i.name === name) || act.find(i => norm(i.name) === norm(name));
 }
 
-function addItem(name){
-  name = canon((name||'').trim());
+/* סימן קריאה בסוף השם = דחוף: "חלב!" מוסיף חלב ומסמן אותו דחוף.
+   עובד בהוספה, בהדבקת רשימה ובעריכת שם. */
+function parseBang(raw){
+  const s = (raw || '').trim();
+  const m = /\s*[!！]+$/.exec(s);
+  return m ? {name: s.slice(0, m.index).trim(), urgent: true} : {name: s, urgent: false};
+}
+function addItem(raw){
+  const p = parseBang(raw);
+  const name = canon(p.name);
   if(!name) return;
   snapshot();
   const ex = findByName(name);
@@ -523,10 +542,16 @@ function addItem(name){
     id = ex.id;
     msg = wasMarked ? ex.name + ' חזר לרשימה' : ex.name + ' כבר ברשימה';
     changed = wasMarked;
+    if(p.urgent){
+      if(!ex.urgent) changed = true;
+      ex.urgent = true;
+      msg = ex.name + (wasMarked ? ' חזר לרשימה כדחוף' : ' סומן דחוף');
+    }
   } else {
     const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
+    if(p.urgent) it.urgent = true;
     state.items.push(it); dirty.add(it.id);
-    id = it.id; msg = 'נוסף: ' + name;
+    id = it.id; msg = (p.urgent ? 'נוסף כדחוף: ' : 'נוסף: ') + name;
   }
   bumpCatalog(ex ? ex.name : name);
   afterChange();
@@ -548,18 +573,22 @@ function addFromInput(){
 }
 function addMany(names){
   snapshot();
-  let added = 0, back = 0, already = 0;
+  let added = 0, back = 0, already = 0, urgentN = 0, newlyUrgent = 0;
   const ids = [];
   for(const raw of names){
-    const name = canon(raw);
+    const p = parseBang(raw);
+    const name = canon(p.name);
     if(!name) continue;
+    if(p.urgent) urgentN++;
     const ex = findByName(name);
     if(ex){
       if(ex.done || ex.skip) back++; else already++;
       ex.done = false; ex.skip = false; ex.updatedAt = now(); dirty.add(ex.id); ids.push(ex.id);
+      if(p.urgent){ if(!ex.urgent) newlyUrgent++; ex.urgent = true; }
       bumpCatalog(ex.name);
     } else {
       const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
+      if(p.urgent) it.urgent = true;
       state.items.push(it); dirty.add(it.id); ids.push(it.id); added++;
       bumpCatalog(name);
     }
@@ -570,14 +599,25 @@ function addMany(names){
   if(added)   parts.push(added === 1 ? 'נוסף 1' : 'נוספו ' + added);
   if(back)    parts.push(back === 1 ? '1 חזר לרשימה' : back + ' חזרו לרשימה');
   if(already) parts.push(already + ' כבר ברשימה');
-  toast(parts.join(' · '), added + back > 0);
+  if(urgentN) parts.push(urgentN === 1 ? '1 דחוף' : urgentN + ' דחופים');
+  toast(parts.join(' · '), added + back + newlyUrgent > 0);
 }
 function toggleBuy(id){
   const it = byId(id); if(!it) return;
   snapshot();
-  it.done = !it.done; if(it.done) it.skip = false;
+  it.done = !it.done; if(it.done){ it.skip = false; delete it.urgent; }   // נקנה = הדחיפות נגמרה
   it.updatedAt = now(); afterTap(id);
   endSearchAfterMark(id);
+}
+/* דחוף: עולה לראש מה שנשאר לקנות. פריט שכבר נקנה חוזר לרשימה.
+   "חסר" לא מבטל דחיפות, כי עדיין צריך להשיג אותו. */
+function toggleUrgent(id){
+  const it = byId(id); if(!it) return;
+  snapshot();
+  if(it.urgent) delete it.urgent;
+  else { it.urgent = true; it.done = false; }
+  it.updatedAt = now(); afterTap(id);
+  toast(it.urgent ? it.name + ' סומן דחוף' : 'הדחיפות בוטלה', true);
 }
 function toggleSkip(id){
   const it = byId(id); if(!it) return;
@@ -645,9 +685,10 @@ function paintItem(id){
   if(!it || !row){ render(); return; }
   row.classList.toggle('done', !!it.done);
   row.classList.toggle('skip', !!it.skip);
-  const tag = row.querySelector('.tag');
-  if(tag) tag.remove();
+  row.querySelectorAll('.tag').forEach(t => t.remove());
   row.querySelector('.name').insertAdjacentHTML('beforeend', tagFor(it));
+  const urg = row.querySelector('.urg');
+  if(urg) urg.textContent = it.urgent ? 'ביטול דחוף' : 'דחוף';
   const q = it.qty || 1;
   row.querySelector('.qty b').textContent = q;
   row.querySelector('.qty').classList.toggle('one', q === 1);
@@ -686,8 +727,9 @@ function flash(id){
 
 function tagFor(i){
   if(i.done) return '<i class="tag">נקנה</i>';
-  if(i.skip) return '<i class="tag">חסר</i>';
-  return '';
+  let t = i.urgent ? '<i class="tag u">דחוף</i>' : '';
+  if(i.skip) t += '<i class="tag">חסר</i>';
+  return t;
 }
 
 /* סדר הרשימה: מה שעוד לא נקנה למעלה, אחריו החסרים, ובתחתית מה שנקנה.
@@ -700,14 +742,14 @@ const HE = new Intl.Collator('he', {sensitivity:'base', numeric:true});
 function currentQuery(){
   if(!$('addRow').classList.contains('show')) return '';
   const parts = ($('newItem').value || '').split(/[,;\n\r]/);
-  return norm(parts[parts.length - 1]);
+  return norm(parseBang(parts[parts.length - 1]).name);
 }
 function paintClear(){ $('clearQ').hidden = !$('newItem').value; }
 function clearQuery(){ $('newItem').value = ''; paintClear(); }
 
 function render(){
   const rank = i => i.done ? 2 : (i.skip ? 1 : 0);
-  let items = activeItems().sort((a,b) => rank(a)-rank(b) || HE.compare(a.name, b.name));
+  let items = activeItems().sort((a,b) => rank(a)-rank(b) || (b.urgent?1:0)-(a.urgent?1:0) || HE.compare(a.name, b.name));
   const q = currentQuery();
   if(q) items = items.filter(i => norm(i.name).includes(q));
   const w = $('itemsWrap');
@@ -721,6 +763,7 @@ function render(){
       const q = i.qty || 1;
       return `<div class="item ${i.done?'done':''} ${i.skip?'skip':''}" data-id="${i.id}">
         <div class="del">מחיקה</div>
+        <div class="urg">${i.urgent ? 'ביטול דחוף' : 'דחוף'}</div>
         <div class="surface">
           <span class="name"><span class="txt">${esc(i.name)}</span>${tagFor(i)}</span>
           <span class="qty ${q===1?'one':''}">
@@ -800,13 +843,17 @@ function startEdit(id){
   let closed = false;
   const finish = save => {
     if(closed) return; closed = true;
-    const v = (inp.value || '').trim();
-    if(save && v && v !== it.name){
+    const p = parseBang(inp.value);
+    const v = p.name;
+    const renamed = !!v && v !== it.name;
+    const urgNow = p.urgent && !it.urgent;
+    if(save && (renamed || urgNow)){
       snapshot();
-      it.name = canon(v); it.updatedAt = now();
-      bumpCatalog(it.name); dirty.add(id);
+      if(renamed){ it.name = canon(v); bumpCatalog(it.name); }
+      if(urgNow){ it.urgent = true; it.done = false; }
+      it.updatedAt = now(); dirty.add(id);
       saveLocal(); schedulePush();
-      toast('השם עודכן');
+      toast(renamed && urgNow ? 'השם עודכן וסומן דחוף' : renamed ? 'השם עודכן' : it.name + ' סומן דחוף');
     }
     render();
   };
@@ -855,7 +902,8 @@ $('itemsWrap').addEventListener('pointermove', e => {
     try{ drag.surf.setPointerCapture(e.pointerId); }catch(err){}
   }
   drag.moved = true;
-  drag.dx = Math.min(0, dx);                       // גרירה שמאלה בלבד
+  drag.dx = dx;                                    // שמאלה = מחיקה, ימינה = דחוף
+  drag.row.classList.toggle('right', dx > 0);
   drag.surf.style.transform = `translateX(${drag.dx}px)`;
 });
 function endDrag(apply){
@@ -863,14 +911,15 @@ function endDrag(apply){
   if(!drag) return;
   const d = drag; drag = null;
   d.surf.classList.add('snap');
-  if(d.dx < -10) d.surf.dataset.blockClick = '1';   // גרירה אמיתית בלבד חוסמת את ההקשה
+  if(Math.abs(d.dx) > 10) d.surf.dataset.blockClick = '1';   // גרירה אמיתית בלבד חוסמת את ההקשה
   if(apply && d.dx <= -SWIPE_OUT){
     d.surf.style.transform = 'translateX(-100%)';
     const id = d.row.dataset.id;
     setTimeout(() => delItem(id), 150);
   } else {
     d.surf.style.transform = '';
-    setTimeout(() => d.row.classList.remove('swiping'), 260);  // אחרי שהשורה חזרה למקומה
+    if(apply && d.dx >= SWIPE_OUT) toggleUrgent(d.row.dataset.id);   // השורה חוזרת למקומה והסימון מופיע
+    setTimeout(() => d.row.classList.remove('swiping', 'right'), 260);  // אחרי שהשורה חזרה למקומה
   }
 }
 $('itemsWrap').addEventListener('pointerup', () => endDrag(true));
