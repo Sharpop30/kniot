@@ -144,10 +144,51 @@ main{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   margin:26px auto 0;max-width:320px;padding:0 20px}
 .hint .g{white-space:nowrap}
 /* אחרי שהמדריך נפתח פעם אחת, שורת ההסבר המלאה מתקצרת לשורה אחת שפותחת אותו */
-.hint.short{display:block;background:none;border:none;font-family:inherit;cursor:pointer;padding:6px 20px}
+.hint.short{display:block;background:none;border:none;font-family:inherit;cursor:pointer;padding:6px 20px;
+  text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
 .hint.short:active{opacity:.5}
 .hint[hidden]{display:none}
 .empty{text-align:center;color:var(--faint);padding:56px 24px 0;font-size:1.05rem}
+
+/* ===== מסך הרשימות =====
+   מסך הבית מציג את כל הרשימות כאריחים. הוא שכבה קבועה מעל הרשימה, וכשנכנסים לרשימה
+   הוא זז הצידה והרשימה נכנסת משמאל, כמו מעבר בין מסכים באייפון בעברית. */
+#home{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;overscroll-behavior:contain;
+  padding-bottom:calc(30px + env(safe-area-inset-bottom));
+  transition:transform .34s cubic-bezier(.2,.8,.25,1),opacity .3s,visibility 0s}
+body:not(.at-home) #home{transform:translateX(30%);opacity:0;visibility:hidden;
+  transition:transform .34s cubic-bezier(.2,.8,.25,1),opacity .3s,visibility 0s .34s}
+/* הרשימה נכנסת משמאל באנימציה בלבד. הזזה קבועה שלה אל מחוץ למסך הרחיבה את
+   העמוד בכיוון ימין־לשמאל, וכיסתה את מסך הבית בשחור (נבדק בבדיקות צילום). */
+@keyframes listIn{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes listOut{from{transform:none;visibility:visible}to{transform:translateX(-100%);visibility:hidden}}
+body.at-home #listView{visibility:hidden}
+body.go-list #listView{animation:listIn .34s cubic-bezier(.2,.8,.25,1)}
+body.go-home #listView{animation:listOut .34s cubic-bezier(.2,.8,.25,1)}
+body.at-home{overflow:hidden}
+body.noanim #home,body.noanim #listView{transition:none!important;animation:none!important}
+@media (prefers-reduced-motion: reduce){ #home,#listView{transition:none!important;animation:none!important} }
+.hspace{width:52px;min-width:52px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:8px 16px 0}
+.card{background:var(--btn);border:none;border-radius:18px;padding:16px;min-height:124px;display:flex;flex-direction:column;
+  gap:6px;text-align:start;color:var(--text);font:inherit;transition:transform .12s,background .12s;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;min-width:0}
+.card:active,.card.holding{transform:scale(.97);background:var(--btn-press)}
+.card .cn{font-size:1.15rem;font-weight:700;overflow-wrap:anywhere}
+.card .cc{color:var(--muted);font-size:.85rem}
+.card .cc b{color:var(--urgent);font-weight:700}
+.card .cp{color:var(--faint);font-size:.8rem;line-height:1.45;margin-top:auto;overflow-wrap:anywhere}
+.card.add{background:none;border:1.5px dashed var(--line);align-items:center;justify-content:center;color:var(--muted);font-weight:600}
+.card.add input{width:100%;font:inherit;font-size:1rem;border:none;border-radius:10px;background:var(--field);
+  color:var(--text);padding:10px;outline:none;text-align:center}
+.back{width:30px;min-width:30px;height:44px;border:none;background:none;color:var(--muted);font-size:1.35rem;
+  padding:0;display:flex;align-items:center;justify-content:center}
+.back.u{color:var(--urgent)}
+.back:active{opacity:.5}
+.lsheet{display:flex;flex-direction:column;gap:10px}
+.lsheet h2{text-align:center;margin:0 0 6px}
+.lsheet .btn.red{background:none;color:var(--danger)}
+.lsheet .btn.red.armed{background:var(--danger);color:#fff}
 
 /* ===== sheet ===== */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:none;
@@ -212,9 +253,11 @@ h1.alert{cursor:pointer}
 .tundo{margin-inline-start:14px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 </style>
 </head>
-<body>
+<body class="at-home">
 
+<div id="listView">
 <header>
+  <button class="back" id="backBtn" type="button" onclick="goHome()" aria-label="כל הרשימות">→</button>
   <button class="circle" id="addBtn" onclick="toggleAdd()" aria-label="הוספת פריט">＋</button>
   <h1><span class="t" id="titleTxt">הקניות שלנו</span><span class="dot none" id="syncDot"></span></h1>
   <div class="side">
@@ -239,8 +282,33 @@ h1.alert{cursor:pointer}
     <span class="g">גררו שמאלה למחיקה</span> · <span class="g">ימינה לסימון דחוף</span> ·
     <span class="g">לחיצה ארוכה על השם לעריכה</span>
   </p>
-  <button class="hint short" id="hintShort" type="button" onclick="openGuide()" hidden>כל הפעולות מוסברות ב־⚙</button>
+  <button class="hint short" id="hintShort" type="button" onclick="openGuide()" hidden>איך משתמשים? הקישו כאן</button>
 </main>
+</div>
+
+<!-- ===== מסך הבית: כל הרשימות ===== -->
+<section id="home" aria-label="כל הרשימות">
+  <header>
+    <span class="hspace"></span>
+    <h1><span class="t">הקניות שלנו</span><span class="dot none" id="homeDot"></span></h1>
+    <div class="side"><span class="hspace" style="width:18px;min-width:18px"></span>
+      <button class="gear" onclick="openSettings()" aria-label="הגדרות">⚙</button></div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <p class="hint">לחיצה ארוכה על רשימה: שינוי שם או מחיקה</p>
+  <button class="hint short" type="button" onclick="openGuide()">איך משתמשים? הקישו כאן</button>
+</section>
+
+<!-- ===== עריכת רשימה ===== -->
+<div class="overlay" id="listSheet" onclick="if(event.target===this)closeListSheet()">
+  <div class="sheet lsheet" role="dialog" aria-label="עריכת רשימה">
+    <h2 id="lsTitle"></h2>
+    <input type="text" id="lsName" aria-label="שם הרשימה" enterkeyhint="done">
+    <button class="btn" type="button" onclick="saveListName()">שמירת השם</button>
+    <button class="btn red" type="button" id="lsDel" onclick="deleteList()">מחיקת הרשימה</button>
+    <button class="btn sub" type="button" onclick="closeListSheet()">ביטול</button>
+  </div>
+</div>
 
 <!-- ===== הגדרות ===== -->
 <div class="overlay" id="setOverlay" onclick="if(event.target===this)closeSettings()">
@@ -260,6 +328,8 @@ h1.alert{cursor:pointer}
         <dt>＋</dt><dd>הוספה וחיפוש. ההקלדה מסננת את הרשימה, ו־Enter מוסיף. אפשר כמה בבת אחת: <b>חלב, לחם, ביצים</b>, או להדביק רשימה מוואטסאפ</dd>
         <dt>לחיצה ארוכה</dt><dd>על שם פריט: עריכת השם</dd>
         <dt>גרירה שמאלה</dt><dd>מחיקה. "בטל" בהודעה שמופיעה למטה מחזיר</dd>
+        <dt>רשימות</dt><dd>מסך הבית מציג את כל הרשימות: סופר, בית מרקחת וכל מה שתוסיפו. הקשה פותחת רשימה, והחץ בפינה מחזיר. חץ כתום: יש משהו דחוף ברשימה אחרת</dd>
+        <dt>רשימה חדשה</dt><dd>"＋ רשימה חדשה" במסך הבית. לחיצה ארוכה על רשימה: שינוי שם או מחיקה</dd>
         <dt>גרירה ימינה</dt><dd>סימון <b>דחוף</b>: הפריט עולה לראש הרשימה עם תגית כתומה. גרירה נוספת מבטלת, והסימון יורד לבד כשמסמנים ○</dd>
         <dt>!</dt><dd>סימן קריאה בסוף השם מוסיף כדחוף: <b>חלב!</b>. עובד גם ברשימה עם פסיקים ובעריכת שם</dd>
       </dl>
@@ -324,7 +394,7 @@ h1.alert{cursor:pointer}
 'use strict';
 
 /* ================= state ================= */
-const VERSION      = '2026-09-26.4';
+const VERSION      = '2026-10-01';
 const DATA_FILE    = 'kniot-data.json';
 const ARCHIVE_FILE = 'kniot-archive.json';   // היסטוריית הקניות הישנה, נכתבת פעם אחת
 const LS = {state:'kniot_state', token:'kniot_token', gist:'kniot_gist', theme:'kniot_theme', dirty:'kniot_dirty',
@@ -400,6 +470,7 @@ function cleanItem(it){
   out.qty = q >= 1 && q <= 999 ? q : 1;
   out.done = !!it.done; out.skip = !!it.skip;
   if(it.urgent) out.urgent = true; else delete out.urgent;
+  if(it.listId != null){ const l = cleanId(it.listId); if(l) out.listId = l; else delete out.listId; }
   if(it.deleted) out.deleted = true; else delete out.deleted;
   out.updatedAt = Number(it.updatedAt) || 0;
   if(it.createdAt != null) out.createdAt = Number(it.createdAt) || 0;
@@ -407,11 +478,59 @@ function cleanItem(it){
 }
 function cleanItems(list){ return (Array.isArray(list) ? list : []).map(cleanItem).filter(Boolean); }
 
+/* ================= רשימות =================
+   כל פריט שייך לרשימה (listId). הפריטים שהיו לפני שהיו רשימות נכנסים לרשימה "סופר".
+   כל רשימה מחזיקה קטלוג השלמה משלה, כדי שבבית המרקחת לא יציעו במבה. */
+const MAIN = 'main';
+let curList = MAIN;
+const cleanId = v => String(v == null ? '' : v).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+function cleanList(l){
+  if(!l || typeof l !== 'object') return null;
+  const id = cleanId(l.id);
+  if(!id) return null;
+  const out = {id, name: String(l.name == null ? '' : l.name).slice(0, 60) || 'רשימה',
+               createdAt: Number(l.createdAt) || 0, updatedAt: Number(l.updatedAt) || 0};
+  if(l.deleted) out.deleted = true;
+  return out;
+}
+function mergeCatalog(into, src){
+  for(const [n, c] of Object.entries(src || {})){
+    if(!c || typeof c !== 'object') continue;
+    const ex = into[n];
+    into[n] = ex ? {count: Math.max(ex.count||0, c.count||0), last: Math.max(ex.last||0, c.last||0)}
+                 : {count: c.count||0, last: c.last||0};
+  }
+}
+/* מסדר את הרשימות במצב נתון: יוצר את "סופר" אם אין אף רשימה, משייך פריטים יתומים,
+   ומעביר את הקטלוג הישן (מלפני הרשימות) לקטלוג של "סופר". */
+function ensureLists(st){
+  st.lists = (Array.isArray(st.lists) ? st.lists : []).map(cleanList).filter(Boolean);
+  if(!st.lists.some(l => !l.deleted)){
+    const m = st.lists.find(l => l.id === MAIN);
+    if(m){ delete m.deleted; m.updatedAt = now(); }
+    else st.lists.unshift({id: MAIN, name: 'סופר', createdAt: 1, updatedAt: 1});
+  }
+  const live = st.lists.filter(l => !l.deleted);
+  const known = new Set(st.lists.map(l => l.id));
+  const fallback = (live.find(l => l.id === MAIN) || live[0]).id;
+  for(const i of st.items) if(!i.listId || !known.has(i.listId)) i.listId = fallback;
+  st.catalogs = (st.catalogs && typeof st.catalogs === 'object') ? st.catalogs : {};
+  if(st.catalog && Object.keys(st.catalog).length){
+    st.catalogs[fallback] = st.catalogs[fallback] || {};
+    mergeCatalog(st.catalogs[fallback], st.catalog);
+  }
+  st.catalog = {};
+  return st;
+}
+const liveLists = () => state.lists.filter(l => !l.deleted).sort((a, b) => (a.createdAt||0) - (b.createdAt||0));
+const listById = id => state.lists.find(l => l.id === id && !l.deleted);
+const itemsOf = id => state.items.filter(i => !i.deleted && i.listId === id);
+const catalogOf = id => (state.catalogs[id] = state.catalogs[id] || {});
+
 function loadLocal(){
   try{ const s = JSON.parse(localStorage.getItem(LS.state)); if(s && s.items) state = s; }catch(e){}
   state.items = cleanItems(state.items);
   state.purchases = state.purchases || [];
-  state.catalog = state.catalog || {};
   state.aliases = state.aliases || {};
   state.lineMap = state.lineMap || {};
   state.stores = state.stores || [];
@@ -420,6 +539,7 @@ function loadLocal(){
   /* dirty שורד סגירה של האפליקציה: סימנת פריטים בסופר בלי רשת,
      iOS סגר את האפליקציה, והשינויים עדיין חייבים לנצח בסנכרון הבא. */
   try{ dirty = new Set(JSON.parse(localStorage.getItem(LS.dirty)) || []); }catch(e){}
+  ensureLists(state);
   pruneCatalog();
 }
 function saveLocal(){
@@ -433,7 +553,7 @@ function saveLocal(){
 /* mine = מזהים ששיניתי כאן ועדיין לא נדחפו לענן. הם תמיד מנצחים,
    גם אם שעון הטלפון השני מקדים. אחרת סימון "נקנה" מתהפך חזרה אחרי הסנכרון. */
 function mergeStates(a, b, mine){
-  const out = {items:[], purchases:[], catalog:{}, stores:[], aliases:{}, lineMap:{}, v:1};
+  const out = {items:[], lists:[], purchases:[], catalog:{}, catalogs:{}, stores:[], aliases:{}, lineMap:{}, v:1};
   const byId = {};
   const local = {};
   const aItems = cleanItems(a.items), bItems = cleanItems(b.items);   // פריט שבור בגיסט לא יפיל את הסנכרון
@@ -445,21 +565,36 @@ function mergeStates(a, b, mine){
   }
   const week = 7*24*3600*1000;
   out.items = Object.values(byId).filter(it => !(it.deleted && now()-(it.updatedAt||0) > week));
+  /* רשימות ממוזגות כמו פריטים: שינוי מקומי שעוד לא עלה מנצח, אחרת החדש יותר */
+  const lById = {}, lLocal = {};
+  const aLists = (Array.isArray(a.lists) ? a.lists : []).map(cleanList).filter(Boolean);
+  const bLists = (Array.isArray(b.lists) ? b.lists : []).map(cleanList).filter(Boolean);
+  for(const l of aLists) lLocal[l.id] = l;
+  for(const l of [...aLists, ...bLists]){
+    if(mine && mine.has(l.id)){ lById[l.id] = lLocal[l.id] || l; continue; }
+    const ex = lById[l.id];
+    if(!ex || (l.updatedAt||0) > (ex.updatedAt||0)) lById[l.id] = l;
+  }
+  out.lists = Object.values(lById).filter(l => !(l.deleted && now()-(l.updatedAt||0) > week));
+  for(const src of [a, b]){
+    if(src.catalogs && typeof src.catalogs === 'object')
+      for(const [lid, cat] of Object.entries(src.catalogs)){
+        const k = cleanId(lid); if(!k) continue;
+        out.catalogs[k] = out.catalogs[k] || {};
+        mergeCatalog(out.catalogs[k], cat);
+      }
+    mergeCatalog(out.catalog, src.catalog);   // קטלוג ישן מטלפון שעוד לא התעדכן
+  }
   const pById = {};
   for(const p of [...(a.purchases||[]), ...(b.purchases||[])]){
     const ex = pById[p.id];
     if(!ex || (p.updatedAt||p.date||0) > (ex.updatedAt||ex.date||0)) pById[p.id] = p;
   }
   out.purchases = Object.values(pById);
-  for(const src of [a.catalog||{}, b.catalog||{}])
-    for(const [n,c] of Object.entries(src)){
-      const ex = out.catalog[n];
-      out.catalog[n] = ex ? {count:Math.max(ex.count,c.count), last:Math.max(ex.last,c.last)} : {...c};
-    }
   out.stores = [...new Set([...(a.stores||[]), ...(b.stores||[])])];
   out.aliases = {...(a.aliases||{}), ...(b.aliases||{})};
   out.lineMap = {...(a.lineMap||{}), ...(b.lineMap||{})};
-  return out;
+  return ensureLists(out);
 }
 /* מה שנוסע לענן בכל שינוי: הכל חוץ מהיסטוריית הקניות הישנה.
    היא נשמרת מקומית ומגובה פעם אחת לקובץ ארכיון נפרד בגיסט. */
@@ -473,13 +608,14 @@ function syncPayload(){
 /* הקטלוג (שמות להשלמה אוטומטית) גדל בלי גבול ונוסע בכל סנכרון.
    שומרים את הנפוצים, ותמיד את מה שנמצא ברשימה כרגע. */
 function pruneCatalog(max = 300){
-  const keys = Object.keys(state.catalog || {});
-  if(keys.length <= max) return;
-  const c = state.catalog;
-  keys.sort((a, b) => (c[b].count||0) - (c[a].count||0) || (c[b].last||0) - (c[a].last||0));
-  const keep = new Set(keys.slice(0, max));
-  for(const i of state.items) if(!i.deleted) keep.add(i.name);
-  for(const k of keys) if(!keep.has(k)) delete c[k];
+  for(const [lid, c] of Object.entries(state.catalogs || {})){
+    const keys = Object.keys(c);
+    if(keys.length <= max) continue;
+    keys.sort((a, b) => (c[b].count||0) - (c[a].count||0) || (c[b].last||0) - (c[a].last||0));
+    const keep = new Set(keys.slice(0, max));
+    for(const i of state.items) if(!i.deleted && i.listId === lid) keep.add(i.name);
+    for(const k of keys) if(!keep.has(k)) delete c[k];
+  }
 }
 
 function canon(n){
@@ -491,7 +627,7 @@ function canon(n){
 
 /* ================= undo ================= */
 function snapshot(){
-  undoStack.push(JSON.parse(JSON.stringify(state.items)));
+  undoStack.push(JSON.parse(JSON.stringify({items: state.items, lists: state.lists})));
   if(undoStack.length > 40) undoStack.shift();
   paintUndo();
 }
@@ -513,11 +649,25 @@ function paintUndo(){
   $('roundBtn').classList.toggle('off', !marked);
 }
 function undo(){
-  const snap = undoStack.pop();
-  if(!snap){ toast('אין מה לבטל'); return; }
+  const snapAll = undoStack.pop();
+  if(!snapAll){ toast('אין מה לבטל'); return; }
+  const snap = snapAll.items;
   const cur = {};
   state.items.forEach(i => cur[i.id] = i);
-  const key = o => JSON.stringify([o.name, o.qty||1, !!o.done, !!o.skip, !!o.deleted]);
+  const key = o => JSON.stringify([o.name, o.qty||1, !!o.done, !!o.skip, !!o.urgent, !!o.deleted]);
+  /* רשימות: מה שהשתנה מאז חוזר למצב שנשמר, ורשימה שנוצרה מאז נמחקת */
+  if(snapAll.lists){
+    const lcur = {}; state.lists.forEach(l => lcur[l.id] = l);
+    const lkey = l => JSON.stringify([l.name, !!l.deleted]);
+    const louts = snapAll.lists.map(old => {
+      const c = lcur[old.id];
+      if(c && lkey(c) === lkey(old)) return c;
+      dirty.add(old.id); return {...old, updatedAt: now()};
+    });
+    const lids = new Set(louts.map(l => l.id));
+    for(const c of state.lists) if(!lids.has(c.id)){ dirty.add(c.id); louts.push({...c, deleted:true, updatedAt:now()}); }
+    state.lists = louts;
+  }
   const out = snap.map(old => {
     const c = cur[old.id];
     return (c && key(c) === key(old)) ? c : {...old, updatedAt: now()};
@@ -526,14 +676,16 @@ function undo(){
   for(const c of state.items) if(!ids.has(c.id)) out.push({...c, deleted:true, updatedAt:now()});
   state.items = out;
   out.forEach(i => dirty.add(i.id));
-  paintUndo(); saveLocal(); render(); schedulePush();
+  if(!listById(curList)) curList = liveLists()[0].id;
+  paintUndo(); saveLocal(); render(); renderHome(); paintBack(); schedulePush();
   toast('בוטל');
 }
 
 /* ================= פעולות על הרשימה ================= */
 function bumpCatalog(name){
-  const c = state.catalog[name] || {count:0, last:0};
-  c.count++; c.last = now(); state.catalog[name] = c;
+  const cat = catalogOf(curList);
+  const c = cat[name] || {count:0, last:0};
+  c.count++; c.last = now(); cat[name] = c;
   pruneCatalog();
 }
 /* השוואת שמות סלחנית: בלי ניקוד, אותיות סופיות כרגילות, בלי רווחים כפולים.
@@ -574,7 +726,7 @@ function addItem(raw){
       msg = ex.name + (wasMarked ? ' חזר לרשימה כדחוף' : ' סומן דחוף');
     }
   } else {
-    const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
+    const it = {id:uid(), name, qty:1, done:false, skip:false, listId:curList, createdAt:now(), updatedAt:now()};
     if(p.urgent) it.urgent = true;
     state.items.push(it); dirty.add(it.id);
     id = it.id; msg = (p.urgent ? 'נוסף כדחוף: ' : 'נוסף: ') + name;
@@ -613,7 +765,7 @@ function addMany(names){
       if(p.urgent){ if(!ex.urgent) newlyUrgent++; ex.urgent = true; }
       bumpCatalog(ex.name);
     } else {
-      const it = {id:uid(), name, qty:1, done:false, skip:false, createdAt:now(), updatedAt:now()};
+      const it = {id:uid(), name, qty:1, done:false, skip:false, listId:curList, createdAt:now(), updatedAt:now()};
       if(p.urgent) it.urgent = true;
       state.items.push(it); dirty.add(it.id); ids.push(it.id); added++;
       bumpCatalog(name);
@@ -666,7 +818,7 @@ function delItem(id){
   toast('נמחק', true);
 }
 function byId(id){ return state.items.find(i => i.id === id); }
-function activeItems(){ return state.items.filter(i => !i.deleted); }
+function activeItems(){ return state.items.filter(i => !i.deleted && i.listId === curList); }
 
 /* סימון פריט = ציור מיידי של השורה עצמה, בלי לבנות מחדש את כל הרשימה
    ובלי שהשורה תקפוץ ממקומה תוך כדי שהאצבע עליה. */
@@ -731,7 +883,7 @@ const SVG_SKIP = '<svg viewBox="0 0 26 26"><circle cx="13" cy="13" r="11"/><line
 /* רשימת ההשלמה נבנית רק כשפותחים את שדה ההוספה. בנייתה בכל הוספה
    הפילה את חלונית ההשלמה של iOS באמצע ההקלדה. */
 function fillCatalogList(){
-  const c = state.catalog || {};
+  const c = catalogOf(curList);
   /* רק שמות שלא נמצאים כרגע ברשימה. את מה שכבר ברשימה החיפוש מציג
      כשורות אמיתיות עם כפתורים, ואין טעם להציע אותם פעמיים. */
   const inList = new Set(activeItems().map(i => norm(i.name)));
@@ -978,6 +1130,140 @@ function applyTheme(){
 function setTheme(p){ localStorage.setItem(LS.theme, p); applyTheme(); }
 mq.addEventListener('change', () => { if(themePref() === 'auto') applyTheme(); });
 
+/* ================= מסך הבית ומעבר בין רשימות ================= */
+const atHome = () => document.body.classList.contains('at-home');
+let screenTimer = null;
+function showScreen(which, instant){
+  const b = document.body;
+  clearTimeout(screenTimer);
+  b.classList.remove('go-list', 'go-home');
+  if(instant){ b.classList.add('noanim'); requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('noanim'))); }
+  else if(b.classList.contains('at-home') !== (which === 'home')){
+    b.classList.add(which === 'home' ? 'go-home' : 'go-list');
+    screenTimer = setTimeout(() => b.classList.remove('go-list', 'go-home'), 380);
+  }
+  b.classList.toggle('at-home', which === 'home');
+  try{ $('home').inert = which !== 'home'; $('listView').inert = which === 'home'; }catch(e){}
+}
+function openList(id, opts = {}){
+  const l = listById(id); if(!l) return;
+  curList = id;
+  $('titleTxt').textContent = l.name;
+  clearQuery();
+  $('addRow').classList.remove('show');
+  clearTimeout(resortTimer);
+  render(); paintBack(); fillCatalogList();
+  window.scrollTo(0, 0);
+  showScreen('list', opts.instant);
+  /* רשימה ריקה: שדה ההוספה פתוח מיד */
+  if(!activeItems().length || opts.add){ $('addRow').classList.add('show'); if(opts.add) $('newItem').focus(); }
+}
+function goHome(){
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  renderHome();
+  showScreen('home');
+}
+/* → כתום כשיש משהו דחוף ברשימה אחרת: רואים את זה גם בלי לצאת מהרשימה */
+function paintBack(){
+  const other = liveLists().some(l => l.id !== curList && itemsOf(l.id).some(i => i.urgent && !i.done));
+  $('backBtn').classList.toggle('u', other);
+  $('backBtn').setAttribute('aria-label', other ? 'כל הרשימות (יש דחוף ברשימה אחרת)' : 'כל הרשימות');
+}
+function renderHome(){
+  const rank = i => i.done ? 2 : (i.skip ? 1 : 0);
+  $('grid').innerHTML = liveLists().map(l => {
+    const its = itemsOf(l.id);
+    const left = its.filter(i => !i.done && !i.skip);
+    const urg = its.filter(i => i.urgent && !i.done).length;
+    const cc = !its.length ? 'ריקה' : !left.length ? 'הכול נקנה'
+      : (left.length === 1 ? 'פריט אחד לקנות' : left.length + ' לקנות') + (urg ? ' · <b>' + urg + ' דחוף</b>' : '');
+    const pv = left.sort((a, b) => rank(a) - rank(b) || (b.urgent?1:0) - (a.urgent?1:0) || HE.compare(a.name, b.name))
+      .slice(0, 4).map(i => i.name).join(', ') + (left.length > 4 ? '...' : '');
+    return `<button class="card" type="button" data-list="${l.id}"><span class="cn">${esc(l.name)}</span>`
+         + `<span class="cc">${cc}</span><span class="cp">${esc(pv)}</span></button>`;
+  }).join('') + '<div class="card add" id="addCard" role="button" tabindex="0">＋ רשימה חדשה</div>';
+}
+function newListInput(){
+  const a = $('addCard'); if(!a || a.querySelector('input')) return;
+  a.innerHTML = '<input id="newListName" type="text" placeholder="שם הרשימה" enterkeyhint="done" aria-label="שם הרשימה החדשה" autocomplete="off">';
+  const inp = $('newListName'); inp.focus();
+  let done = false;
+  inp.addEventListener('keydown', ev => {
+    if(ev.key === 'Enter'){ ev.preventDefault(); inp.blur(); }
+    else if(ev.key === 'Escape'){ done = true; renderHome(); }
+  });
+  inp.addEventListener('blur', () => { if(done) return; done = true; createList(inp.value); });
+}
+function createList(raw){
+  const name = String(raw || '').trim().slice(0, 60);
+  if(!name){ renderHome(); return; }
+  const ex = liveLists().find(l => norm(l.name) === norm(name));
+  if(ex){ toast('כבר יש רשימה בשם הזה'); renderHome(); openList(ex.id); return; }
+  snapshot();
+  const l = {id: uid(), name, createdAt: now(), updatedAt: now()};
+  state.lists.push(l); dirty.add(l.id);
+  saveLocal(); schedulePush();
+  renderHome();
+  toast('נוספה רשימה: ' + name, true);
+  openList(l.id, {add: true});
+}
+$('grid').addEventListener('click', e => {
+  const c = e.target.closest('.card[data-list]');
+  if(c){ if(c.dataset.held){ delete c.dataset.held; return; } openList(c.dataset.list); return; }
+  if(e.target.closest('#addCard')) newListInput();
+});
+$('grid').addEventListener('keydown', e => { if(e.key === 'Enter' && e.target.id === 'addCard') newListInput(); });
+/* לחיצה ארוכה על אריח: שינוי שם או מחיקה */
+let cardHold = null;
+$('grid').addEventListener('pointerdown', e => {
+  const c = e.target.closest('.card[data-list]'); if(!c) return;
+  c.classList.add('holding');
+  cardHold = {c, x: e.clientX, y: e.clientY, t: setTimeout(() => {
+    c.classList.remove('holding'); c.dataset.held = '1'; cardHold = null; openListSheet(c.dataset.list);
+  }, HOLD_MS)};
+});
+function cancelCardHold(){ if(!cardHold) return; clearTimeout(cardHold.t); cardHold.c.classList.remove('holding'); cardHold = null; }
+$('grid').addEventListener('pointermove', e => { if(cardHold && Math.hypot(e.clientX - cardHold.x, e.clientY - cardHold.y) > 8) cancelCardHold(); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('grid').addEventListener(ev, cancelCardHold));
+$('grid').addEventListener('contextmenu', e => e.preventDefault());
+
+let sheetList = null;
+function openListSheet(id){
+  const l = listById(id); if(!l) return;
+  sheetList = id;
+  $('lsTitle').textContent = l.name;
+  $('lsName').value = l.name;
+  $('lsDel').classList.remove('armed'); $('lsDel').textContent = 'מחיקת הרשימה';
+  $('listSheet').classList.add('show');
+}
+function closeListSheet(){ $('listSheet').classList.remove('show'); sheetList = null; }
+$('lsName').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); saveListName(); } });
+function saveListName(){
+  const l = listById(sheetList); const v = $('lsName').value.trim().slice(0, 60);
+  if(l && v && v !== l.name){
+    snapshot();
+    l.name = v; l.updatedAt = now(); dirty.add(l.id);
+    saveLocal(); schedulePush();
+    if(l.id === curList) $('titleTxt').textContent = v;
+    toast('השם עודכן', true);
+  }
+  closeListSheet(); renderHome();
+}
+/* מחיקה בשתי הקשות, כי היא מוחקת גם את כל הפריטים שברשימה. "בטל" בהודעה מחזיר הכול. */
+function deleteList(){
+  const b = $('lsDel');
+  if(liveLists().length < 2){ toast('צריכה להישאר לפחות רשימה אחת'); return; }
+  if(!b.classList.contains('armed')){ b.classList.add('armed'); b.textContent = 'למחוק גם את הפריטים שבה? הקישו שוב'; return; }
+  const l = listById(sheetList); if(!l) return;
+  snapshot();
+  l.deleted = true; l.updatedAt = now(); dirty.add(l.id);
+  for(const i of state.items) if(i.listId === l.id && !i.deleted){ i.deleted = true; i.updatedAt = now(); dirty.add(i.id); }
+  if(curList === l.id) curList = liveLists()[0].id;
+  saveLocal(); schedulePush();
+  closeListSheet(); renderHome(); render(); paintBack();
+  toast('הרשימה נמחקה', true);
+}
+
 /* ================= הגדרות ================= */
 /* בפעם הראשונה שפותחים את ההגדרות במכשיר, המדריך נפתח מעצמו,
    כדי שמשתמש חדש יראה אותו בלי לחפש. אחר כך הוא נשאר סגור. */
@@ -1099,10 +1385,11 @@ $('toast').addEventListener('click', () => {
 
 /* ================= סנכרון GitHub Gist ================= */
 function setSync(cls){
-  const d = $('syncDot');
-  d.className = 'dot ' + (token ? cls : 'none');
-  document.querySelector('h1').classList.toggle('alert', token && cls === 'err');
-  d.title = {ok:'מסונכרן', busy:'מסנכרן...', wait:'אין רשת, ממתין', err:'שגיאת סנכרון'}[cls] || '';
+  for(const d of [$('syncDot'), $('homeDot')]){
+    d.className = 'dot ' + (token ? cls : 'none');
+    d.title = {ok:'מסונכרן', busy:'מסנכרן...', wait:'אין רשת, ממתין', err:'שגיאת סנכרון'}[cls] || '';
+  }
+  document.querySelectorAll('h1').forEach(h => h.classList.toggle('alert', !!token && cls === 'err'));
 }
 /* שורת מצב קריאה בהגדרות, במקום לפענח צבע של נקודה */
 function syncSummary(){
@@ -1169,13 +1456,18 @@ async function doSync(quiet){
 
     let needPush = dirty.size > 0;
     if(remote){
-      const before = JSON.stringify(state.items);
+      const before = JSON.stringify([state.items, state.lists]);
       const merged = mergeStates(state, remote, dirty);
       state = merged;
+      if(JSON.stringify([state.items, state.lists]) !== before){
+        if(!listById(curList)){ curList = liveLists()[0].id; if(!atHome()) goHome(); }
+        renderHome(); paintBack();
+        if(!atHome()) $('titleTxt').textContent = listById(curList).name;
+      }
       /* מציירים מחדש רק אם הסנכרון באמת שינה משהו. אחרת הרשימה
          נבנית מחדש מתחת לאצבע בכל כניסה לאפליקציה, וזה מרגיש תקוע. */
       /* לא מציירים מחדש בזמן שהמשתמש עורך שם, כי זה היה מוחק לו את מה שהקליד */
-      if(JSON.stringify(state.items) !== before && !document.querySelector('.edit')) render();
+      if(JSON.stringify([state.items, state.lists]) !== before && !document.querySelector('.edit')) render();
       if(syncPayload() !== JSON.stringify({...remote, purchases:[]})) needPush = true;
     } else needPush = true;
 
@@ -1266,15 +1558,17 @@ window.addEventListener('online', () => { if(token) doSync(); });
 window.addEventListener('offline', () => { if(token) setSync('wait'); });
 document.addEventListener('visibilitychange', () => { if(!document.hidden && token) doSync(); });
 
-document.querySelector('h1').addEventListener('click', () => {
+document.querySelectorAll('h1').forEach(h => h.addEventListener('click', () => {
   if($('syncDot').classList.contains('err')) openSettings(true);
-});
+}));
 
 applyTheme();
 loadLocal();
+curList = liveLists()[0].id;
 render();
+renderHome();
+showScreen('home', true);
 paintHint();
-if(!activeItems().length) $('addRow').classList.add('show');
 fillCatalogList();
 setSync(navigator.onLine ? '' : 'wait');
 if(token){ doSync(); startPolling(); }
